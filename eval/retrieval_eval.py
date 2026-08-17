@@ -35,10 +35,15 @@ def run(golden: Path = Path("eval/golden/starter.jsonl"),
                     return i
             return None
 
+        required_g = [g for g in r["gold_clauses"] if g.get("required")]
         ranks = [hit_rank(g) for g in required]
         found = [x for x in ranks if x is not None]
-        r_at_5 += all(x is not None and x < 5 for x in ranks)
-        r_at_20 += all(x is not None for x in ranks)
+        if required_g:   # all required clauses must surface
+            r_at_5 += all(x is not None and x < 5 for x in ranks)
+            r_at_20 += all(x is not None for x in ranks)
+        else:            # sufficient semantics: any one gold clause counts
+            r_at_5 += any(x is not None and x < 5 for x in ranks)
+            r_at_20 += bool(found)
         mrr += 1.0 / (min(found) + 1) if found else 0.0
         status = "✓" if found else "✗"
         print(f"{status} {r['id']} ranks={ranks} {r['question'][:60]}")

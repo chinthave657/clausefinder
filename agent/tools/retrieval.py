@@ -13,9 +13,20 @@ from pathlib import Path
 import lancedb
 
 CAND_DEPTH = 100
+FUSE_DEPTH = 50      # ranks beyond this add dual-presence noise, not signal
 RRF_K = 60
+VEC_W = 0.7          # OTel-568M (NDCG@10 90.1) outranks BM25 on NL questions;
+FTS_W = 0.3          # weighted RRF prevents mediocre dual-presence from
+                     # beating single-leg excellence (no reranker until P1)
 TOP_FINAL = 8
 XREF_EXTRA = 4
+
+_FTS_SANITIZE = str.maketrans({c: " " for c in "?!:;()[]{}\"'-/\\*^~"})
+
+
+def _fts_query(query: str) -> str:
+    """Strip tantivy operators — '-' negates, '?' and quotes are syntax."""
+    return " ".join(query.translate(_FTS_SANITIZE).split())
 
 
 @dataclass
@@ -30,7 +41,7 @@ class Retriever:
         self.db = lancedb.connect(db_path)
         self.tbl = self.db.open_table("chunks")
         self.edges = (
-            [e for e in self.db.open_table("edges").to_pandas().to_dict("records")]
+            self.db.open_table("edges").to_arrow().to_pylist()
             if "edges" in self.db.table_names() else []
         )
         if model is None:
@@ -44,20 +55,20 @@ class Retriever:
 
         qvec = self.model.encode([query], normalize_embeddings=True)[0]
         vq = self.tbl.search(qvec).limit(CAND_DEPTH)
-        fq = self.tbl.search(query, query_type="fts").limit(CAND_DEPTH)
+        fq = self.tbl.search(_fts_query(query), query_type="fts").limit(CAND_DEPTH)
         if where:
             vq = vq.where(where, prefilter=True)
             fq = fq.where(where)
         vec_hits = vq.to_list()
         fts_hits = fq.to_list()
 
-        # Reciprocal-rank fusion
+        # Weighted reciprocal-rank fusion over capped depth
         scores: dict[str, float] = {}
         by_id: dict[str, dict] = {}
-        for hits in (vec_hits, fts_hits):
-            for rank, h in enumerate(hits):
+        for hits, w in ((vec_hits, VEC_W), (fts_hits, FTS_W)):
+            for rank, h in enumerate(hits[:FUSE_DEPTH]):
                 cid = h["id"]
-                scores[cid] = scores.get(cid, 0.0) + 1.0 / (RRF_K + rank + 1)
+                scores[cid] = scores.get(cid, 0.0) + w / (RRF_K + rank + 1)
                 by_id.setdefault(cid, h)
 
         ranked = sorted(scores, key=scores.get, reverse=True)
