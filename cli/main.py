@@ -4,8 +4,11 @@ from __future__ import annotations
 from pathlib import Path
 
 import typer
+from dotenv import load_dotenv
 from rich.console import Console
 from rich.panel import Panel
+
+load_dotenv()
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
 console = Console()

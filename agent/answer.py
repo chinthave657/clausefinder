@@ -8,18 +8,48 @@ OpenRouter for the demo). Reasoning is requested OFF for answer calls.
 from __future__ import annotations
 
 import os
+import re
 
 from openai import OpenAI
 
 from agent.tools.retrieval import Retriever, Retrieved, enhance_query
-from agent.validators.citations import ValidatorReport, validate
+from agent.validators.citations import ValidatorReport, strip_failed_quotes, validate
 
-CONTEXT_CAP_TOKENS = 2000
+# 2000 was Telco-RAG's number for 125-tok chunks; with ~1200-tok parents it
+# starves the model to 1-2 sources. 5 parents ≈ 4500-6000 tok ≈ $0.0003 on Nano.
+CONTEXT_CAP_TOKENS = 6000
+
+# Nemotron-3 is reasoning-default; ask/router run with thinking off (design §2).
+NO_THINK = {"chat_template_kwargs": {"thinking": False}}
+_THINK_RE = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
+
+
+def _content(resp) -> str:
+    """Message content with any reasoning block stripped defensively."""
+    return _THINK_RE.sub("", resp.choices[0].message.content or "").strip()
+
+
+def _degenerate(text: str) -> bool:
+    return "<unk>" in text or len(text) < 40
+
+
+def _chat(client, model: str, messages: list[dict], max_tokens: int = 900) -> str:
+    """One completion; on degenerate output (<unk> runs — intermittent serving
+    bug under long context) retry once, then once more without NO_THINK."""
+    for extra in (NO_THINK, NO_THINK, {}):
+        resp = client.chat.completions.create(
+            model=model, messages=messages,
+            temperature=0.0, max_tokens=max_tokens, extra_body=extra)
+        text = _content(resp)
+        if not _degenerate(text):
+            return text
+    return text
 
 SYSTEM = """You are ClauseFinder, a 3GPP standards assistant for telecom engineers.
 Rules:
 - Answer ONLY from the provided clause excerpts. If they don't contain the answer, say so and name the specs you searched.
 - Cite every factual claim inline with its chunk tag, e.g. [C2]. Include one short verbatim quote (<= 1 paragraph, in double quotes) per key claim, anchored to its tag.
+- Quotes must be CONTIGUOUS verbatim spans copied exactly from an excerpt: no ellipses (...), no edits, no stitching separate sentences. Never place the user's question in quotes.
 - Use precise 3GPP terminology (handover not handoff; UE, gNB; cite specs as TS).
 - Distinguish what the standard REQUIRES, what it ALLOWS, and what vendors typically implement.
 - Never output configuration commands as authoritative; recommend and cite instead.
@@ -68,32 +98,27 @@ def ask(question: str, retriever: Retriever, release: str | None = None,
             "Answer with inline [Ck] citations and verbatim quotes per the rules.")
 
     client, model = _client()
-    resp = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "system", "content": SYSTEM},
-                  {"role": "user", "content": user}],
-        temperature=0.2, max_tokens=900,
-    )
-    answer = resp.choices[0].message.content or ""
+    answer = _chat(client, model,
+                   [{"role": "system", "content": SYSTEM},
+                    {"role": "user", "content": user}])
 
     report = validate(answer, tagmap)
     if not report.passed:
-        fix = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": SYSTEM},
-                {"role": "user", "content": user},
-                {"role": "assistant", "content": answer},
-                {"role": "user", "content":
-                    "Some citations failed validation:\n"
-                    + "\n".join(c.reason for c in report.checks if not c.ok)
-                    + "\nRewrite the answer fixing ONLY the failed citations/quotes. "
-                      "Quote text verbatim from the excerpts or drop the quote."},
-            ],
-            temperature=0.0, max_tokens=900,
-        )
-        answer2 = fix.choices[0].message.content or ""
+        answer2 = _chat(client, model, [
+            {"role": "system", "content": SYSTEM},
+            {"role": "user", "content": user},
+            {"role": "assistant", "content": answer},
+            {"role": "user", "content":
+                ("Your answer contains NO [Ck] citation tags. Every factual claim needs one. "
+                 if not report.checks else "Some citations failed validation:\n"
+                 + "\n".join(c.reason for c in report.checks if not c.ok))
+                + "\nRewrite the answer fixing ONLY the failed citations/quotes. "
+                  "Quote text verbatim from the excerpts or drop the quote."},
+        ])
         report2 = validate(answer2, tagmap)
         if report2.passed or sum(c.ok for c in report2.checks) > sum(c.ok for c in report.checks):
-            return answer2, report2, tagmap
+            answer, report = answer2, report2
+    if not report.passed:
+        answer = strip_failed_quotes(answer, tagmap)
+        report = validate(answer, tagmap)
     return answer, report, tagmap

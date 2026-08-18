@@ -14,6 +14,7 @@ dependencies = [
     "openai>=1.40",
     "rapidfuzz>=3.9",
     "rich>=13.7",
+    "python-dotenv>=1.2.3",
 ]
 
 [project.scripts]

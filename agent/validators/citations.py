@@ -15,6 +15,32 @@ TAG_RE = re.compile(r"\[C(\d+)\]")
 QUOTE_RE = re.compile(r'"([^"]{20,})"')
 FUZZ_THRESHOLD = 95.0
 
+_MD_NOISE = re.compile(r"[*_`|>#]|\\(?=[_*])")
+_WS = re.compile(r"\s+")
+# quote elision markers: "...", "[...]", "[…]", "…" — split and verify each
+# segment verbatim; elision is legitimate, invention is not
+_ELLIPSIS = re.compile(r"\[?(?:\.{3}|…)\]?")
+_BULLET = re.compile(r"\b\d+>\s*")  # 3GPP procedural level markers "1> " "2> "
+
+
+def _norm(s: str) -> str:
+    """Neutralize markdown emphasis, escapes, smart punctuation, line wraps."""
+    s = _MD_NOISE.sub("", s)
+    s = _BULLET.sub("", s)
+    s = (s.replace("‘", "'").replace("’", "'")
+         .replace("“", '"').replace("”", '"')
+         .replace("–", "-").replace("—", "-"))
+    return _WS.sub(" ", s).strip().lower()
+
+
+def _quote_score(quote: str, text: str) -> float:
+    """Min segment score: every elision-separated fragment must be verbatim."""
+    ntext = _norm(text)
+    segs = [s for s in (_norm(p) for p in _ELLIPSIS.split(quote)) if len(s) >= 15]
+    if not segs:
+        return fuzz.partial_ratio(_norm(quote), ntext)
+    return min(fuzz.partial_ratio(s, ntext) for s in segs)
+
 
 class CitationCheck(BaseModel):
     tag: str
@@ -26,6 +52,18 @@ class ValidatorReport(BaseModel):
     checks: list[CitationCheck]
     passed: bool
     uncited_tags: list[str] = []
+
+
+def strip_failed_quotes(answer: str, retrieved: dict[str, dict]) -> str:
+    """Design §3 layer 3: a quote that validates nowhere in the retrieved set
+    is removed — the claim keeps its clause reference, loses the fake quote."""
+    def _sub(m: re.Match) -> str:
+        quote = m.group(1)
+        if any(_quote_score(quote, c["text"]) >= FUZZ_THRESHOLD
+               for c in retrieved.values()):
+            return m.group(0)
+        return "(see cited clause — paraphrased)"
+    return QUOTE_RE.sub(_sub, answer)
 
 
 def validate(answer: str, retrieved: dict[str, dict]) -> ValidatorReport:
@@ -51,11 +89,23 @@ def validate(answer: str, retrieved: dict[str, dict]) -> ValidatorReport:
             checks.append(CitationCheck(tag=tag or "?", ok=False,
                                         reason=f"quote has no anchoring tag: {quote[:40]}…"))
             continue
-        score = fuzz.partial_ratio(quote, retrieved[tag]["text"])
-        ok = score >= FUZZ_THRESHOLD
+        score = _quote_score(quote, retrieved[tag]["text"])
+        if score >= FUZZ_THRESHOLD:
+            checks.append(CitationCheck(tag=tag, ok=True))
+            continue
+        # verbatim in a different retrieved chunk? re-anchor: grounding holds,
+        # only the tag attribution was off
+        others = {t: _quote_score(quote, c["text"])
+                  for t, c in retrieved.items() if t != tag}
+        best = max(others, key=others.get) if others else None
+        if best and others[best] >= FUZZ_THRESHOLD:
+            checks.append(CitationCheck(
+                tag=best, ok=True,
+                reason=f"re-anchored {tag}->{best}"))
+            continue
         checks.append(CitationCheck(
-            tag=tag, ok=ok,
-            reason="" if ok else f"quote not found in {tag} (score {score:.0f}): {quote[:40]}…"))
+            tag=tag, ok=False,
+            reason=f"quote not found in any retrieved chunk (best {max(score, *(others.values() or [0])):.0f}): {quote[:40]}…"))
 
     return ValidatorReport(
         checks=checks,
