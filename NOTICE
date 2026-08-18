@@ -1,5 +1,31 @@
 ClauseFinder
 Copyright 2026 Venkat Chintha
 
-This product uses NVIDIA Nemotron models.
-Licensed by NVIDIA Corporation under the NVIDIA Nemotron Model License.
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+--------------------------------------------------------------------------
+Third-party models and data
+--------------------------------------------------------------------------
+
+NVIDIA Nemotron
+  This product uses NVIDIA Nemotron models (nemotron-3-nano-30b-a3b,
+  nemotron-3-super-120b-a12b) via NVIDIA API endpoints or NIM self-host.
+  NVIDIA Nemotron is governed by the NVIDIA Open Model License Agreement:
+  https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/
+  Built with NVIDIA Nemotron.
+
+OTel-Embedding-568M
+  Telecom-domain embedding model by farbodtavakkoli, licensed under the
+  Apache License, Version 2.0.
+  https://huggingface.co/farbodtavakkoli/OTel-Embedding-568M
+
+GSMA Open Telco LLM Benchmarks corpus (3GPP specifications)
+  The ingested corpus derives from 3GPP technical specifications
+  redistributed via the GSMA Open Telco LLM Benchmarks initiative.
+  3GPP specifications are copyright 3GPP Organizational Partners
+  (ARIB, ATIS, CCSA, ETSI, TSDSI, TTA, TTC).
+  When citing spec content produced by this tool, cite the underlying
+  specification, e.g.: "3GPP TS 38.331, Radio Resource Control (RRC),
+  V18.0.0, clause 5.3.5.3." Do not present ClauseFinder output as an
+  authoritative copy of a 3GPP specification; verify against the
+  published spec at https://www.3gpp.org/DynaReport/.

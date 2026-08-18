@@ -32,7 +32,6 @@ def search(query: str, release: str = typer.Option(None), top: int = 8):
 @app.command()
 def ask(question: str, release: str = typer.Option(None)):
     """Clause-cited answer (LLM via NVIDIA_API_KEY or OPENROUTER_API_KEY)."""
-    import json
     from agent.answer import ask as _ask
     from agent.tools.retrieval import Retriever, load_acronyms
     r = Retriever(DB)

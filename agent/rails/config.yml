@@ -1,0 +1,31 @@
+# NeMo Guardrails config (design §"Guardrails").
+# Rails covered here:
+#   - topic rail        -> input flow "self check input" (prompts.yml scope policy)
+#   - injection rail    -> user-channel override attempts blocked by the same
+#     input check; the retrieved-context channel is handled in Python
+#     (rails_runtime.GuardedRetriever sanitization + system-prompt hardening),
+#     since spec text never passes through the LLM as instructions.
+#   - no-config-execution rail -> output flow "soften config blocks" (actions.py)
+#   - citation-required rail   -> output flow "check citations" calls the
+#     existing deterministic validator (agent/validators/citations.py)
+# LLM: same Nano model as ask, thinking OFF (Nemotron-3 is reasoning-default).
+colang_version: "1.0"
+
+models:
+  - type: main
+    engine: nim                      # built-in provider -> integrate.api.nvidia.com, NVIDIA_API_KEY
+    model: nvidia/nemotron-3-nano-30b-a3b
+    parameters:
+      temperature: 0.0
+      max_tokens: 16                 # self-check answers are Yes/No; output rails use no LLM
+      chat_template_kwargs:
+        thinking: false
+
+rails:
+  input:
+    flows:
+      - self check input
+  output:
+    flows:
+      - soften config blocks
+      - check citations

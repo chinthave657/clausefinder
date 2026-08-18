@@ -1,0 +1,48 @@
+# ClauseFinder self-host.
+#
+# Default (CPU) profile: one app container. LLM calls go to build.nvidia.com
+# with your own key (BYO NVIDIA_API_KEY in .env — copy .env.example). Only the
+# 568M embedding model runs locally, on CPU.
+#
+#   cp .env.example .env   # add your keys
+#   docker compose up --build
+#
+# The data/ volume must contain a built index (data/index). Build it on the
+# host first: `make ingest index`, or run the same commands inside the
+# container.
+
+services:
+  app:
+    build: .
+    env_file: .env
+    ports:
+      - "7860:7860"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+
+  # --- GPU profile (stub) --------------------------------------------------
+  # Fully local self-host: serve Nemotron as a NIM microservice on your own
+  # GPU and point the app at it instead of build.nvidia.com. Uncomment and
+  # fill in when you have an NGC key and a >=48GB GPU. Then run:
+  #   docker compose --profile gpu up
+  #
+  # nim:
+  #   profiles: ["gpu"]
+  #   image: nvcr.io/nim/nvidia/nemotron-3-nano-30b-a3b:latest
+  #   environment:
+  #     - NGC_API_KEY=${NGC_API_KEY}
+  #   ports:
+  #     - "8000:8000"
+  #   volumes:
+  #     - ./data/nim-cache:/opt/nim/.cache
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: all
+  #             capabilities: [gpu]
+  #
+  # Point the app at it with (in .env):
+  #   NVIDIA_BASE_URL=http://nim:8000/v1

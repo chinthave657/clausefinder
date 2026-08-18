@@ -15,6 +15,10 @@ dependencies = [
     "rapidfuzz>=3.9",
     "rich>=13.7",
     "python-dotenv>=1.2.3",
+    "nvidia-nat==1.8.0",
+    "nemoguardrails==0.23.0",
+    "gradio>=6.24.0",
+    "gradio-client>=2.6.0",
 ]
 
 [project.scripts]
@@ -23,9 +27,28 @@ clausefinder = "cli.main:app"
 [tool.uv]
 package = true
 
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+# Deterministic CI ruleset: pyflakes, core pycodestyle, sorted imports.
+select = ["E4", "E7", "E9", "F", "I"]
+ignore = ["E741"]  # short math-ish names (l, r) are idiomatic in the fusion code
+
+[tool.ruff.lint.per-file-ignores]
+# sys.path bootstrap must precede project imports in the web entrypoint
+"web/app.py" = ["E402"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.3",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["ingest", "agent", "cli"]

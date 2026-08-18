@@ -12,7 +12,7 @@ import re
 
 from openai import OpenAI
 
-from agent.tools.retrieval import Retriever, Retrieved, enhance_query
+from agent.tools.retrieval import Retrieved, Retriever, enhance_query
 from agent.validators.citations import ValidatorReport, strip_failed_quotes, validate
 
 # 2000 was Telco-RAG's number for 125-tok chunks; with ~1200-tok parents it

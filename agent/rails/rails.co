@@ -1,0 +1,17 @@
+# Colang 1.0 flows for ClauseFinder rails.
+# "self check input" comes from the guardrails library; blocked input triggers
+# the canned refusal below (topic rail: one line, names the scope).
+
+define bot refuse to respond
+  "Out of scope: ClauseFinder only answers questions about telecom standards (3GPP / GSMA specifications)."
+
+# no-config-execution rail: imperative vendor CLI config blocks are softened
+# to recommendations (deterministic, actions.py).
+define subflow soften config blocks
+  $bot_message = execute soften_config_blocks
+
+# citation-required rail: runs the existing deterministic citation validator
+# (agent/validators/citations.py) over the final message; replaces an
+# uncitable answer, annotates a partially-failing one.
+define subflow check citations
+  $bot_message = execute apply_citation_rail

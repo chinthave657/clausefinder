@@ -8,6 +8,7 @@ Checks, in order of strength:
 from __future__ import annotations
 
 import re
+
 from pydantic import BaseModel
 from rapidfuzz import fuzz
 
