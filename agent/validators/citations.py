@@ -26,8 +26,10 @@ _BULLET = re.compile(r"\b\d+>\s*")  # 3GPP procedural level markers "1> " "2> "
 
 def _norm(s: str) -> str:
     """Neutralize markdown emphasis, escapes, smart punctuation, line wraps."""
-    s = _MD_NOISE.sub("", s)
+    # _BULLET must run BEFORE _MD_NOISE: the noise class strips '>', which
+    # would leave '\d+>' unmatchable and orphan a stray digit token
     s = _BULLET.sub("", s)
+    s = _MD_NOISE.sub("", s)
     s = (s.replace("‘", "'").replace("’", "'")
          .replace("“", '"').replace("”", '"')
          .replace("–", "-").replace("—", "-"))
