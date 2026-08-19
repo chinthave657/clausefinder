@@ -64,6 +64,7 @@ def build(
     db_path: Path = typer.Option(Path("data/index"), help="LanceDB dir"),
     batch: int = typer.Option(16, help="embed batch (peak-RAM knob)"),
     commit_every: int = typer.Option(512, help="rows per LanceDB append"),
+    stop_after: int = typer.Option(0, help="exit 0 after N new rows (snapshot-upload loop)"),
     fresh: bool = typer.Option(False, help="drop table + checkpoint, start over"),
 ) -> None:
     # Checkpoint is scoped to the parsed dir: a delta run (different chunks
@@ -81,6 +82,7 @@ def build(
     else:
         typer.echo(f"embedding {total - done}/{total} chunks with {MODEL_ID} "
                    f"(resume at {done}) …")
+        start_done = done
         model = load_model()
         tbl = db.open_table("chunks") if "chunks" in db.table_names() else None
         pending: list[dict] = []
@@ -96,6 +98,9 @@ def build(
                 tbl = db.open_table("chunks")
                 typer.echo(f"  committed {done}/{total}")
                 pending = []
+                if stop_after and done - start_done >= stop_after:
+                    typer.echo(f"stop-after {stop_after} reached at {done}/{total}")
+                    raise typer.Exit(0)
         if pending:
             done = _commit(db, tbl, pending, done, ckpt)
 
