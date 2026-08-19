@@ -7,6 +7,7 @@ deduped) → 1-hop xref expansion (≤4 extra chunks). Reranker is a config flag
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,6 +21,12 @@ FTS_W = 0.3          # weighted RRF prevents mediocre dual-presence from
                      # beating single-leg excellence (no reranker until P1)
 TOP_FINAL = 8
 XREF_EXTRA = 4
+
+# OTel-Reranker-0.6B (Qwen3 cross-encoder, MRR@10 0.944 on telecom eval).
+# Design §3 step 3: rerank fused top-50 before parent expansion. Off by
+# default on CPU-only paths (adds ~5-30s); on for eval/GPU via env or flag.
+RERANK_MODEL = "farbodtavakkoli/OTel-Reranker-0.6B"
+RERANK_DEPTH = 50
 
 _FTS_SANITIZE = str.maketrans({c: " " for c in "?!:;()[]{}\"'-/\\*^~"})
 
@@ -37,7 +44,7 @@ class Retrieved:
 
 
 class Retriever:
-    def __init__(self, db_path: Path, model=None):
+    def __init__(self, db_path: Path, model=None, rerank: bool | None = None):
         self.db = lancedb.connect(db_path)
         self.tbl = self.db.open_table("chunks")
         self.edges = (
@@ -48,6 +55,29 @@ class Retriever:
             from ingest.embed_index import load_model
             model = load_model()
         self.model = model
+        self.rerank = (rerank if rerank is not None
+                       else os.environ.get("CLAUSEFINDER_RERANK", "0") == "1")
+        self._reranker = None
+
+    def _rerank_hits(self, query: str, hits: list[dict]) -> list[dict]:
+        if self._reranker is None:
+            import torch
+            from sentence_transformers import CrossEncoder
+            device = ("cuda" if torch.cuda.is_available()
+                      else "mps" if torch.backends.mps.is_available() else "cpu")
+            self._reranker = CrossEncoder(RERANK_MODEL, trust_remote_code=True,
+                                          max_length=1024, device=device)
+            # Qwen3 reranker ships no pair-rendering template; ST requires one
+            self._reranker.processor.chat_template = (
+                '<Query>: {{ messages | selectattr("role", "eq", "query")'
+                ' | map(attribute="content") | first }}\n'
+                '<Document>: {{ messages | selectattr("role", "eq", "document")'
+                ' | map(attribute="content") | first }}')
+        scores = self._reranker.predict(
+            [(query, h["breadcrumb"] + "\n" + h["text"]) for h in hits],
+            batch_size=8, show_progress_bar=False)
+        return [h for _, h in sorted(zip(scores, hits),
+                                     key=lambda p: -float(p[0]))]
 
     def search(self, query: str, release: str | None = None,
                top: int = TOP_FINAL) -> list[Retrieved]:
@@ -72,6 +102,12 @@ class Retriever:
                 by_id.setdefault(cid, h)
 
         ranked = sorted(scores, key=scores.get, reverse=True)
+
+        # Optional cross-encoder rerank of fused top-RERANK_DEPTH (design §3.3)
+        if self.rerank:
+            cands = [by_id[c] for c in ranked[:RERANK_DEPTH]]
+            reranked = self._rerank_hits(query, cands)
+            ranked = [h["id"] for h in reranked] + ranked[RERANK_DEPTH:]
 
         # Parent expansion: one result per clause unit (parent), best child wins
         seen_parents: set[str] = set()
