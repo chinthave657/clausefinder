@@ -103,8 +103,9 @@ satellite suite, contamination caveat for OTel-2.0) lives in
 
 | Benchmark | Config | Metric | Result |
 |---|---|---|---|
-| Golden set (100 items, stratified) | Nano + ClauseFinder retrieval | pass rate | pending |
-| Retrieval | — | recall@5 / recall@20 / MRR@10 | pending |
+| Golden set (starter 9, ask mode, full 322k corpus) | Nano + ClauseFinder (rerank on) | validator-pass + gold-cited | 8/9 |
+| Retrieval (322k chunks, no rerank) | — | recall@5 / recall@20 / MRR@10 | 0.67 / 1.00 / 0.52 |
+| Retrieval (322k chunks, + OTel-Reranker-0.6B) | — | recall@5 / recall@20 / MRR@10 | **0.89 / 1.00 / 0.73** |
 | TeleQnA Rel-17 (734Q) | bare Nano | accuracy | pending |
 | TeleQnA Rel-17 (734Q) | Nano + ClauseFinder | accuracy | pending |
 | TeleQnA Rel-18 (780Q) | bare Nano | accuracy | pending |
