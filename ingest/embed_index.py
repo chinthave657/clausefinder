@@ -66,7 +66,9 @@ def build(
     commit_every: int = typer.Option(512, help="rows per LanceDB append"),
     fresh: bool = typer.Option(False, help="drop table + checkpoint, start over"),
 ) -> None:
-    ckpt = db_path / ".embed_checkpoint"
+    # Checkpoint is scoped to the parsed dir: a delta run (different chunks
+    # file, different ordering) must never resume against the full-run offset.
+    ckpt = db_path / f".embed_checkpoint_{parsed.name}"
     total = sum(1 for _ in (parsed / "chunks.jsonl").open())
     db = lancedb.connect(db_path)
 

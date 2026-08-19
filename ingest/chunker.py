@@ -20,7 +20,12 @@ from pydantic import BaseModel
 # `## 5.2.2.3.3a Title` / `## A.1 Title` / `## Annex B (informative): Title`
 CLAUSE_RE = re.compile(r"^#{1,6}\s+\**((?:\d+|[A-Z])(?:\.\d+)*[a-z]?)\**\s+(.+?)\s*$")
 ANNEX_RE = re.compile(r"^#{1,6}\s+\**Annex\s+([A-Z])\**\s*(?:\((normative|informative)\))?:?\s*(.*?)\s*$", re.I)
-TITLE_RE = re.compile(r"#\s+3GPP\s+(TS|TR)\s+([\d.\-]+)\s+V([\d.]+)")
+# GSMA markdown has two header shapes:
+#   (a) "# 3GPP TS 38.331 V18.5.0"          — single heading line
+#   (b) "**3GPP TS**\n\n**24.501 V18.5.0**" — split bold lines (~24% of specs)
+TITLE_RE = re.compile(
+    r"(?:#\s+|\*\*)3GPP\s+(TS|TR)(?:\*\*)?\s+(?:\*\*)?([\d.\-]+)\s+V([\d.]+)",
+    re.DOTALL)
 XREF_CLAUSE_RE = re.compile(r"\bclauses?\s+((?:\d+|[A-Z])(?:\.\d+)+[a-z]?)", re.I)
 XREF_SPEC_RE = re.compile(r"\bTS\s?(\d{2}\.\d{3}(?:-\d+)?)")
 
@@ -83,10 +88,19 @@ def parse_spec(md_path: Path, release: str, series: int) -> tuple[list[Chunk], l
     text = md_path.read_text(errors="replace")
     lines = text.splitlines()
 
+    # Identity comes from the GSMA path (authoritative): .../<series>_series/<digits>/raw.md
+    # Header formats vary too much to trust (single-line, split-bold, and
+    # broken Word-field conversions all occur); it only contributes version.
+    raw_digits = md_path.parent.name          # e.g. "24501" or "38523-3"
+    base, _, suffix = raw_digits.partition("-")
+    spec_digits = f"{base[:2]}.{base[2:]}" + (f"-{suffix}" if suffix else "")
     m = TITLE_RE.search(text[:2000])
-    if not m:
-        raise ValueError(f"no 3GPP title line in {md_path}")
-    doc_type, spec_digits, version = m.groups()
+    if m:
+        doc_type, _, version = m.groups()
+    else:
+        doc_type = "TR" if "Technical Report" in text[:3000] else "TS"
+        vm = re.search(r"\bV(\d+\.\d+\.\d+)", text[:5000])
+        version = vm.group(1) if vm else "unknown"
     spec = f"{doc_type} {spec_digits}"
     url = _spec_url(spec_digits)
 
