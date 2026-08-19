@@ -41,6 +41,7 @@ class Retrieved:
     tag: str            # [C1] …
     chunk: dict
     score: float
+    rerank_score: float | None = None  # cross-encoder relevance; None if rerank off
 
 
 class Retriever:
@@ -76,8 +77,10 @@ class Retriever:
         scores = self._reranker.predict(
             [(query, h["breadcrumb"] + "\n" + h["text"]) for h in hits],
             batch_size=8, show_progress_bar=False)
-        return [h for _, h in sorted(zip(scores, hits),
-                                     key=lambda p: -float(p[0]))]
+        ranked = sorted(zip(scores, hits), key=lambda p: -float(p[0]))
+        for s, h in ranked:
+            h["_rerank_score"] = float(s)
+        return [h for _, h in ranked]
 
     def search(self, query: str, release: str | None = None,
                top: int = TOP_FINAL) -> list[Retrieved]:
@@ -138,7 +141,8 @@ class Retriever:
 
         out = []
         for i, h in enumerate(results + extra):
-            out.append(Retrieved(tag=f"[C{i+1}]", chunk=h, score=scores.get(h["id"], 0.0)))
+            out.append(Retrieved(tag=f"[C{i+1}]", chunk=h, score=scores.get(h["id"], 0.0),
+                                 rerank_score=h.get("_rerank_score")))
         return out
 
     def parent_text(self, r: Retrieved, cap_tokens: int = 1200) -> str:

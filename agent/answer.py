@@ -19,6 +19,17 @@ from agent.validators.citations import ValidatorReport, strip_failed_quotes, val
 # starves the model to 1-2 sources. 5 parents ≈ 4500-6000 tok ≈ $0.0003 on Nano.
 CONTEXT_CAP_TOKENS = 6000
 
+# Abstain floors (design §3 step 6), calibrated 2026-08-19 on the golden set:
+# abstain questions score <= 0.110, answerable >= 0.119 on OTel-Reranker-0.6B.
+# Two floors because the boundary is thin: below HARD -> refuse outright;
+# HARD..SOFT -> answer but lead with an explicit weak-match caveat.
+ABSTAIN_HARD = 0.05
+ABSTAIN_SOFT = 0.15
+WEAK_MATCH_CAVEAT = (
+    "> **Weak match:** the indexed specs may not directly cover this question — "
+    "the excerpts below are the closest material found, but verify the "
+    "technology/release context before relying on this answer.\n\n")
+
 # Nemotron-3 is reasoning-default; ask/router run with thinking off (design §2).
 NO_THINK = {"chat_template_kwargs": {"thinking": False}}
 _THINK_RE = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
@@ -96,6 +107,21 @@ def ask(question: str, retriever: Retriever, release: str | None = None,
     if not hits:
         return ("No supporting clauses found in the indexed specs.",
                 ValidatorReport(checks=[], passed=False), {})
+
+    # Abstain rail: cross-encoder confidence gate (only meaningful w/ rerank on)
+    top_rr = max((h.rerank_score for h in hits if h.rerank_score is not None),
+                 default=None)
+    if top_rr is not None and top_rr < ABSTAIN_HARD:
+        searched = sorted({h.chunk["spec"] for h in hits})
+        return (f"The indexed specifications don't appear to cover this "
+                f"question (best relevance {top_rr:.2f}). Closest specs "
+                f"searched: {', '.join(searched[:6])}. If the answer lives in "
+                f"a spec series ClauseFinder doesn't index (e.g. 36-series "
+                f"LTE, O-RAN, 3GPP2, IEEE), that's why — see the README for "
+                f"how to self-host with additional series.",
+                ValidatorReport(checks=[], passed=True), {})
+    weak = top_rr is not None and top_rr < ABSTAIN_SOFT
+
     context, tagmap = _context_block(retriever, hits)
 
     user = (f"Question: {question}\n\n"
@@ -127,4 +153,6 @@ def ask(question: str, retriever: Retriever, release: str | None = None,
     if not report.passed:
         answer = strip_failed_quotes(answer, tagmap)
         report = validate(answer, tagmap)
+    if weak:
+        answer = WEAK_MATCH_CAVEAT + answer
     return answer, report, tagmap

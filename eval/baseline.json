@@ -1,0 +1,32 @@
+{
+ "retrieval": {
+  "golden_file": "eval/golden/all.jsonl",
+  "n": 106,
+  "config": "rerank@50, fuse@50",
+  "recall@5": 0.868,
+  "recall@20": 0.896,
+  "mrr@10": 0.768,
+  "ablation_depth100": {
+   "recall@5": 0.849,
+   "recall@20": 0.906,
+   "mrr@10": 0.776,
+   "verdict": "rejected - top5 regression at 2x latency"
+  },
+  "index": {
+   "chunks": 391487,
+   "specs": 776,
+   "releases": [
+    "Rel-17",
+    "Rel-18"
+   ],
+   "edges": 143433
+  },
+  "date": "2026-08-20"
+ },
+ "abstain": {
+  "hard_floor": 0.05,
+  "soft_floor": 0.15,
+  "result": "5/5 out-of-corpus abstain-or-caveat (2 hard, 3 caveat), 0 confident wrong-tech answers",
+  "calibration": "abstain<=0.110 vs answerable>=0.119 top rerank score"
+ }
+}
