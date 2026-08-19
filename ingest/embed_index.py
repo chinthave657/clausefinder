@@ -29,9 +29,14 @@ def load_model():
     from sentence_transformers import SentenceTransformer
     device = ("cuda" if torch.cuda.is_available()
               else "mps" if torch.backends.mps.is_available() else "cpu")
-    model = SentenceTransformer(MODEL_ID, trust_remote_code=True, device=device)
+    kwargs = {}
+    if device == "cuda":
+        # fp16 halves VRAM (T4 14.5GB OOMs at fp32 batch 64 × 1400 tok);
+        # retrieval quality unaffected. MPS/CPU stay fp32.
+        kwargs["model_kwargs"] = {"torch_dtype": torch.float16}
+    model = SentenceTransformer(MODEL_ID, trust_remote_code=True, device=device, **kwargs)
     model.max_seq_length = EMBED_MAX_TOKENS
-    typer.echo(f"embedding on device: {device}")
+    typer.echo(f"embedding on device: {device} ({'fp16' if device == 'cuda' else 'fp32'})")
     return model
 
 
