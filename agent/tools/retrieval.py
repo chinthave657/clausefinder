@@ -104,7 +104,7 @@ class Retriever:
         ranked = sorted(scores, key=scores.get, reverse=True)
 
         # Optional cross-encoder rerank of fused top-RERANK_DEPTH (design §3.3)
-        if self.rerank:
+        if getattr(self, "rerank", False):  # tests build Retriever via __new__
             cands = [by_id[c] for c in ranked[:RERANK_DEPTH]]
             reranked = self._rerank_hits(query, cands)
             ranked = [h["id"] for h in reranked] + ranked[RERANK_DEPTH:]
