@@ -1,6 +1,6 @@
 # ClauseFinder developer targets. Everything runs through uv.
 
-.PHONY: install lint test check ingest index eval run docker-build docker-up
+.PHONY: install lint test check ingest index eval demo run docker-build docker-up
 
 install:
 	uv sync
@@ -25,8 +25,11 @@ index:
 eval:
 	uv run python eval/retrieval_eval.py
 
-run:
+# Gradio demo (same entrypoint the container runs) — needs a built index.
+demo:
 	uv run python web/app.py
+
+run: demo
 
 docker-build:
 	docker compose build

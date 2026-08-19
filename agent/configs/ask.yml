@@ -1,0 +1,23 @@
+# NAT config: ask-mode workflow (design §3.4 -- "future examples-PR artifact").
+#
+# Mirrors agent.nat_functions.clausefinder_ask exactly: clause-cited answer
+# over the local LanceDB index, wrapped in NeMo Guardrails input/output rails
+# (agent/rails/). Runnable two ways:
+#
+#   nat run --config_file agent/configs/ask.yml --input "What does TS 38.331 say about RRC reconfiguration?"
+#
+#   from agent.nat_workflow import run_ask
+#   print(run_ask("What does TS 38.331 say about RRC reconfiguration?"))
+#
+# The LLM itself (Nemotron Nano, reasoning off) is selected inside
+# agent/answer.py via NVIDIA_API_KEY / OPENROUTER_API_KEY -- not configured
+# here, since NAT's own `llms:` block isn't in this function's call path
+# (design principle: "logic stays in the plain-Python ... modules; NAT wraps
+# them as workflow functions").
+
+workflow:
+  _type: clausefinder_ask
+  db_path: data/index
+  parsed_dir: data/parsed
+  release: null      # soft filter, e.g. "Rel-18"; null = search all indexed releases
+  guardrails: true

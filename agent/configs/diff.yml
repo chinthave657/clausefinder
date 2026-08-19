@@ -1,0 +1,20 @@
+# NAT config: diff-mode workflow (design §3.4 -- "future examples-PR artifact").
+#
+# Mirrors agent.nat_workflow.clausefinder_diff: release-to-release clause diff
+# (deterministic diff rendered first, then Super-120B synthesis, reasoning
+# ON -- design §2 diff agent) with the same citation validator as ask-mode.
+# release_a/release_b are only fallbacks -- if the query itself names two
+# releases (e.g. "diff Rel-17 vs Rel-18 for RRC reconfiguration"), those are
+# parsed out and used instead (agent.nat_workflow._extract_releases).
+#
+#   nat run --config_file agent/configs/diff.yml --input "What changed in RRC reconfiguration between Rel-17 and Rel-18?"
+#
+#   from agent.nat_workflow import run_diff
+#   print(run_diff("What changed in RRC reconfiguration between Rel-17 and Rel-18?"))
+
+workflow:
+  _type: clausefinder_diff
+  db_path: data/index
+  parsed_dir: data/parsed
+  release_a: Rel-17
+  release_b: Rel-18

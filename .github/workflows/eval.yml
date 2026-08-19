@@ -1,0 +1,51 @@
+name: Eval
+
+# Retrieval + answer-quality eval against the committed dev index (~5k
+# TS 38.331 Rel-18 chunks). Needs NVIDIA_API_KEY (answer + judge calls) —
+# forks don't get repo secrets, so the job is skipped rather than failed
+# when the secret is absent (design §6: eval is a build-plan exit gate, not
+# a fork-PR blocker).
+
+on:
+  pull_request:
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      - name: Check NVIDIA_API_KEY is available
+        id: key_check
+        run: echo "has_key=${{ secrets.NVIDIA_API_KEY != '' }}" >> "$GITHUB_OUTPUT"
+
+      - name: Retrieval eval (recall@5/@20, MRR@10 vs golden set)
+        if: steps.key_check.outputs.has_key == 'true'
+        run: uv run python eval/retrieval_eval.py
+
+      - name: Answer eval (--limit 5, cheap PR-scale run)
+        if: steps.key_check.outputs.has_key == 'true'
+        env:
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+        run: uv run python eval/answer_eval.py --limit 5
+
+      - name: CI gate (validator pass rate + gold-cited rate vs baseline)
+        if: steps.key_check.outputs.has_key == 'true'
+        env:
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+        run: uv run python eval/ci_gate.py
+
+      - name: Skipped — NVIDIA_API_KEY not available (forks)
+        if: steps.key_check.outputs.has_key != 'true'
+        run: echo "NVIDIA_API_KEY secret not present (likely a fork PR) — skipping eval, not failing the check."

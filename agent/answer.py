@@ -56,7 +56,12 @@ Rules:
 - Be concise. No preamble. Do not think step-by-step out loud."""
 
 
-def _client() -> tuple[OpenAI, str]:
+def _client(api_key: str | None = None) -> tuple[OpenAI, str]:
+    """api_key: optional per-request BYO OpenRouter key (web demo session
+    state) — overrides env vars for just this call, never persisted."""
+    if api_key:
+        return (OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key),
+                os.environ.get("CLAUSEFINDER_MODEL", "nvidia/nemotron-3-nano-30b-a3b:free"))
     if os.environ.get("OPENROUTER_API_KEY"):
         return (OpenAI(base_url="https://openrouter.ai/api/v1",
                        api_key=os.environ["OPENROUTER_API_KEY"]),
@@ -84,7 +89,8 @@ def _context_block(retriever: Retriever, hits: list[Retrieved]) -> tuple[str, di
 
 
 def ask(question: str, retriever: Retriever, release: str | None = None,
-        acronyms: dict | None = None) -> tuple[str, ValidatorReport, dict[str, dict]]:
+        acronyms: dict | None = None,
+        api_key: str | None = None) -> tuple[str, ValidatorReport, dict[str, dict]]:
     q = enhance_query(question, acronyms or {})
     hits = retriever.search(q, release=release)
     if not hits:
@@ -97,7 +103,7 @@ def ask(question: str, retriever: Retriever, release: str | None = None,
             f"Question (again): {question}\n\n"
             "Answer with inline [Ck] citations and verbatim quotes per the rules.")
 
-    client, model = _client()
+    client, model = _client(api_key)
     answer = _chat(client, model,
                    [{"role": "system", "content": SYSTEM},
                     {"role": "user", "content": user}])

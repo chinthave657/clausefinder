@@ -9,8 +9,12 @@ Run locally:  uv run python web/app.py
 """
 from __future__ import annotations
 
+import contextlib
+import datetime as dt
 import html
+import os
 import sys
+import threading
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -33,19 +37,97 @@ from web.theme import CSS, theme
 
 DB = ROOT / "data" / "index"
 PARSED = ROOT / "data" / "parsed"
+REPO_URL = "https://github.com/venkych/clausefinder"
 
 _RETRIEVER = None
 _ACRONYMS: dict[str, str] = {}
+_INDEX_ERROR: str | None = None
+
+
+class IndexNotReady(RuntimeError):
+    """Raised when data/index is missing or incomplete — friendly banner,
+    never a raw traceback, since a bigger ingest may be running elsewhere."""
 
 
 def _retriever():
-    """Lazy singleton — embedding model load is the slow part (once)."""
-    global _RETRIEVER, _ACRONYMS
-    if _RETRIEVER is None:
-        from agent.tools.retrieval import Retriever, load_acronyms
-        _RETRIEVER = Retriever(DB)
-        _ACRONYMS = load_acronyms(PARSED)
+    """Lazy singleton — embedding model load is the slow part (once). A
+    failed load is cached (not retried every request) but reported clearly."""
+    global _RETRIEVER, _ACRONYMS, _INDEX_ERROR
+    if _RETRIEVER is None and _INDEX_ERROR is None:
+        try:
+            from agent.tools.retrieval import Retriever, load_acronyms
+            _RETRIEVER = Retriever(DB)
+            _ACRONYMS = load_acronyms(PARSED)
+        except Exception as e:  # missing data/index, empty table, bad path…
+            _INDEX_ERROR = str(e)
+    if _INDEX_ERROR is not None:
+        raise IndexNotReady(_INDEX_ERROR)
     return _RETRIEVER
+
+
+INDEX_BANNER = (
+    "**The clause index is still building.** This demo needs a LanceDB "
+    "index at `data/index/` (a larger ingest may be running elsewhere). "
+    f"Check back soon, or browse the repo: [{REPO_URL}]({REPO_URL})"
+)
+
+
+# --------------------------------------------------------------- rate limit
+
+DAILY_LIMIT = int(os.environ.get("DEMO_DAILY_LIMIT", "10"))
+_QUOTA: dict[str, tuple[dt.date, int]] = {}
+_QUOTA_LOCK = threading.Lock()
+
+CAPACITY_BANNER = (
+    f"**Daily query limit reached ({DAILY_LIMIT}/day) for this session.** "
+    "Connect your own OpenRouter key in Settings above to keep going — it "
+    f"bypasses this limit — or self-host: [{REPO_URL}]({REPO_URL})"
+)
+
+
+def _consume_quota(request: "gr.Request | None", bypass: bool) -> bool:
+    """One counter per browser session (request.session_hash), reset daily.
+    BYO-key sessions bypass the counter entirely (design §4)."""
+    if bypass:
+        return True
+    sid = getattr(request, "session_hash", None) or "anon"
+    today = dt.date.today()
+    with _QUOTA_LOCK:
+        day, count = _QUOTA.get(sid, (today, 0))
+        if day != today:
+            day, count = today, 0
+        if count >= DAILY_LIMIT:
+            _QUOTA[sid] = (day, count)
+            return False
+        _QUOTA[sid] = (day, count + 1)
+        return True
+
+
+# ------------------------------------------------------------------ BYO key
+
+_ENV_LOCK = threading.Lock()
+
+
+@contextlib.contextmanager
+def _borrowed_key(api_key: str | None):
+    """explain()/diff_releases() don't take an api_key param (out of this
+    workstream's file scope — only agent/answer.py was touched); borrow the
+    process env var for the duration of the call instead. Serializes
+    concurrent BYO-key requests, which is fine at the demo's queue
+    concurrency (2-3)."""
+    if not api_key:
+        yield
+        return
+    with _ENV_LOCK:
+        prev = os.environ.get("OPENROUTER_API_KEY")
+        os.environ["OPENROUTER_API_KEY"] = api_key
+        try:
+            yield
+        finally:
+            if prev is None:
+                os.environ.pop("OPENROUTER_API_KEY", None)
+            else:
+                os.environ["OPENROUTER_API_KEY"] = prev
 
 
 def _releases() -> list[str]:
@@ -120,22 +202,30 @@ def _stream(history: list[dict], text: str):
 # --------------------------------------------------------------------- ask
 
 @GPU
-def _ask_pipeline(question: str, release: str | None):
+def _ask_pipeline(question: str, release: str | None, api_key: str | None):
     from agent.answer import ask
-    return ask(question, _retriever(), release=release, acronyms=_ACRONYMS)
+    return ask(question, _retriever(), release=release, acronyms=_ACRONYMS,
+               api_key=api_key or None)
 
 
-def run_ask(question: str, release_choice: str, history: list[dict]):
+def run_ask(question: str, release_choice: str, history: list[dict],
+            api_key: str, request: gr.Request):
     question = (question or "").strip()
     if not question:
         yield history, "", ""
         return
-    history = (history or []) + [
-        {"role": "user", "content": question},
-        {"role": "assistant", "content": "_Retrieving clauses…_"}]
+    history = (history or []) + [{"role": "user", "content": question}]
+    if not _consume_quota(request, bypass=bool(api_key)):
+        yield (history + [{"role": "assistant", "content": CAPACITY_BANNER}],
+               "", "")
+        return
+    history = history + [{"role": "assistant", "content": "_Retrieving clauses…_"}]
     yield history, "", ""
     try:
-        answer, report, tagmap = _ask_pipeline(question, _rel(release_choice))
+        answer, report, tagmap = _ask_pipeline(question, _rel(release_choice), api_key)
+    except IndexNotReady:
+        yield history[:-1] + [{"role": "assistant", "content": INDEX_BANNER}], "", ""
+        return
     except Exception as e:  # surface, never crash the queue
         yield (history[:-1] + [{"role": "assistant", "content": f"Error: {e}"}],
                "", "")
@@ -148,19 +238,27 @@ def run_ask(question: str, release_choice: str, history: list[dict]):
 
 # ----------------------------------------------------------------- explain
 
-def run_explain(ref: str, release_choice: str, history: list[dict]):
+def run_explain(ref: str, release_choice: str, history: list[dict],
+                api_key: str, request: gr.Request):
     ref = (ref or "").strip()
     if not ref:
         yield history, "", ""
         return
-    history = (history or []) + [
-        {"role": "user", "content": f"Explain {ref}"},
-        {"role": "assistant", "content": "_Fetching clause…_"}]
+    history = (history or []) + [{"role": "user", "content": f"Explain {ref}"}]
+    if not _consume_quota(request, bypass=bool(api_key)):
+        yield (history + [{"role": "assistant", "content": CAPACITY_BANNER}],
+               "", "")
+        return
+    history = history + [{"role": "assistant", "content": "_Fetching clause…_"}]
     yield history, "", ""
     try:
         from agent.explain import explain
-        text, report, tagmap = explain(ref, _retriever(),
-                                       release=_rel(release_choice))
+        with _borrowed_key(api_key):
+            text, report, tagmap = explain(ref, _retriever(),
+                                           release=_rel(release_choice))
+    except IndexNotReady:
+        yield history[:-1] + [{"role": "assistant", "content": INDEX_BANNER}], "", ""
+        return
     except Exception as e:
         yield (history[:-1] + [{"role": "assistant", "content": f"Error: {e}"}],
                "", "")
@@ -173,15 +271,20 @@ def run_explain(ref: str, release_choice: str, history: list[dict]):
 
 # -------------------------------------------------------------------- diff
 
-def run_diff(question: str, rel_a: str, rel_b: str, history: list[dict]):
+def run_diff(question: str, rel_a: str, rel_b: str, history: list[dict],
+             api_key: str, request: gr.Request):
     question = (question or "").strip()
     if not question:
         yield history, "", ""
         return
     history = (history or []) + [
-        {"role": "user", "content": f"Diff {rel_a} vs {rel_b}: {question}"},
-        {"role": "assistant", "content": "_Resolving clause sets on both "
-                                         "releases (~1 min)…_"}]
+        {"role": "user", "content": f"Diff {rel_a} vs {rel_b}: {question}"}]
+    if not _consume_quota(request, bypass=bool(api_key)):
+        yield (history + [{"role": "assistant", "content": CAPACITY_BANNER}],
+               "", "")
+        return
+    history = history + [{"role": "assistant", "content": "_Resolving clause "
+                          "sets on both releases (~1 min)…_"}]
     yield history, "", ""
     try:
         from agent import diff as diff_mod  # owned by the diff workstream
@@ -193,8 +296,14 @@ def run_diff(question: str, rel_a: str, rel_b: str, history: list[dict]):
         yield history[:-1] + [{"role": "assistant", "content": msg}], "", ""
         return
     try:
-        fn = getattr(diff_mod, "diff", None) or getattr(diff_mod, "run")
-        text, report, tagmap = fn(question, _retriever(), rel_a, rel_b)
+        fn = getattr(diff_mod, "diff", None) or getattr(diff_mod, "diff_releases", None) \
+            or getattr(diff_mod, "run")
+        with _borrowed_key(api_key):
+            result = fn(question, _retriever(), rel_a, rel_b)
+        text, report, tagmap = result[0], result[1], result[2]
+    except IndexNotReady:
+        yield history[:-1] + [{"role": "assistant", "content": INDEX_BANNER}], "", ""
+        return
     except Exception as e:
         yield (history[:-1] + [{"role": "assistant", "content": f"Error: {e}"}],
                "", "")
@@ -207,12 +316,26 @@ def run_diff(question: str, rel_a: str, rel_b: str, history: list[dict]):
 
 # ---------------------------------------------------------------------- UI
 
-EXAMPLES = [
+ASK_EXAMPLES = [
     "What triggers an RRC re-establishment procedure?",
     "What does the UE do when timer T310 expires?",
     "What happens when the UE receives an RRCSetup message?",
     "When does the UE send a MeasurementReport?",
     "What is conditional handover and when is it executed?",
+]
+
+DIFF_EXAMPLES = [
+    "How did conditional handover change?",
+    "What changed in RRC re-establishment?",
+    "Did T310 timer handling change?",
+    "What's new in MeasurementReport triggering conditions?",
+]
+
+EXPLAIN_EXAMPLES = [
+    "TS 38.331 5.3.5.3",
+    "TS 38.331 5.3.7",
+    "TS 38.331 5.3.10",
+    "TS 38.331 5.3.13",
 ]
 
 FOOTER = ('<div class="cf-footer"><strong>Answers cite official 3GPP specs '
@@ -232,11 +355,27 @@ def _side_panel():
 
 def build_demo() -> gr.Blocks:
     releases = _releases()
-    default_rel = "Rel-18" if "Rel-18" in releases else releases[0]
+    rel_choices = [r for r in releases if r != "All releases"] or ["Rel-18"]
+    default_rel = "Rel-18" if "Rel-18" in rel_choices else rel_choices[0]
 
     with gr.Blocks(title="ClauseFinder") as demo:
         gr.Markdown("# ClauseFinder\nClause-cited 3GPP answers and release "
                     "diffs on the NVIDIA agentic stack.")
+
+        api_key_state = gr.State("")
+        with gr.Accordion("Settings — bring your own OpenRouter key (optional)",
+                          open=False):
+            gr.Markdown(
+                f"This demo allows **{DAILY_LIMIT} free queries/day** per "
+                "browser session. Paste an [OpenRouter](https://openrouter.ai/keys) "
+                "API key to use your own quota instead — it is kept only in "
+                "this browser session's memory, used solely for your queries, "
+                "and never logged or persisted server-side.")
+            api_key_box = gr.Textbox(
+                label="OpenRouter API key", type="password",
+                placeholder="sk-or-v1-…", show_label=True)
+            api_key_box.change(lambda k: (k or "").strip(),
+                               inputs=api_key_box, outputs=api_key_state)
 
         with gr.Tabs():
             # ------------------------------------------------------- Ask
@@ -252,12 +391,12 @@ def build_demo() -> gr.Blocks:
                                                   label="Release", scale=1)
                             ask_btn = gr.Button("Ask", variant="primary", scale=1)
                         gr.Markdown("**Examples**")
-                        ex_btns = [gr.Button(q, size="sm") for q in EXAMPLES]
+                        ex_btns = [gr.Button(q, size="sm") for q in ASK_EXAMPLES]
                     ask_sources, ask_badges = _side_panel()
-                for b, q in zip(ex_btns, EXAMPLES):
+                for b, q in zip(ex_btns, ASK_EXAMPLES):
                     b.click(lambda q=q: q, outputs=ask_q)
                 gr.on([ask_btn.click, ask_q.submit], run_ask,
-                      inputs=[ask_q, ask_rel, ask_chat],
+                      inputs=[ask_q, ask_rel, ask_chat, api_key_state],
                       outputs=[ask_chat, ask_sources, ask_badges])
 
             # ------------------------------------------------------ Diff
@@ -271,21 +410,23 @@ def build_demo() -> gr.Blocks:
                                         "change between releases?")
                         with gr.Row():
                             diff_a = gr.Dropdown(
-                                [r for r in releases if r != "All releases"] or
-                                ["Rel-17"], value=default_rel,
+                                rel_choices, value=default_rel,
                                 label="Release A", scale=1)
                             diff_b = gr.Dropdown(
-                                [r for r in releases if r != "All releases"] or
-                                ["Rel-18"], value=default_rel,
+                                rel_choices, value=default_rel,
                                 label="Release B", scale=1)
                             diff_btn = gr.Button("Diff", variant="primary",
                                                  scale=1)
                         gr.Markdown("_Diff runs Super-120B with reasoning ON "
                                     "over a deterministic clause diff — "
                                     "expect ~1 minute._")
+                        gr.Markdown("**Examples**")
+                        diff_ex_btns = [gr.Button(q, size="sm") for q in DIFF_EXAMPLES]
                     diff_sources, diff_badges = _side_panel()
+                for b, q in zip(diff_ex_btns, DIFF_EXAMPLES):
+                    b.click(lambda q=q: q, outputs=diff_q)
                 gr.on([diff_btn.click, diff_q.submit], run_diff,
-                      inputs=[diff_q, diff_a, diff_b, diff_chat],
+                      inputs=[diff_q, diff_a, diff_b, diff_chat, api_key_state],
                       outputs=[diff_chat, diff_sources, diff_badges])
 
             # --------------------------------------------------- Explain
@@ -304,9 +445,13 @@ def build_demo() -> gr.Blocks:
                         gr.Markdown("Fetches the named clause directly by "
                                     "metadata — no vector search — and "
                                     "explains it in plain English.")
+                        gr.Markdown("**Examples**")
+                        exp_ex_btns = [gr.Button(q, size="sm") for q in EXPLAIN_EXAMPLES]
                     exp_sources, exp_badges = _side_panel()
+                for b, q in zip(exp_ex_btns, EXPLAIN_EXAMPLES):
+                    b.click(lambda q=q: q, outputs=exp_ref)
                 gr.on([exp_btn.click, exp_ref.submit], run_explain,
-                      inputs=[exp_ref, exp_rel, exp_chat],
+                      inputs=[exp_ref, exp_rel, exp_chat, api_key_state],
                       outputs=[exp_chat, exp_sources, exp_badges])
 
         gr.HTML(FOOTER)

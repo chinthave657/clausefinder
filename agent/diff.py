@@ -2,7 +2,8 @@
 
 Pipeline (design §2, diff agent):
   1. resolve_clause_sets — Retriever with release filter, <=15 chunks/side
-  2. align clauses by number, title-similarity fallback for renumbering
+  2. align_clauses (agent.tools.clause_align) — clause-number match, title-
+     similarity fallback for renumbering
   3. DETERMINISTIC diff (difflib over normalized lines) rendered first
   4. Super-120B synthesis over the rendered diff, reasoning ON,
      [Ck] citations on both sides, validated by the citation validator
@@ -12,57 +13,19 @@ answer is "no changes", and no synthesis can improve on it.
 """
 from __future__ import annotations
 
-import difflib
 import os
-import re
-from dataclasses import dataclass, field
 
 from openai import OpenAI
 
 from agent.answer import NO_THINK, _content, _degenerate
+from agent.tools.clause_align import ClausePair, ClauseSide, align_clauses, render_diff
 from agent.tools.retrieval import Retriever, enhance_query
 from agent.validators.citations import ValidatorReport, strip_failed_quotes, validate
 
 PER_SIDE = 15               # design cap: <=15 chunks per release side
 PARENT_CAP_TOKENS = 900     # per-clause text cap (both sides, symmetric)
-MAX_DIFF_LINES = 40         # per-clause unified-diff cap in the render
-TITLE_SIM_THRESHOLD = 85.0  # renumbering fallback: title match score
 
-# --- normalization (same neutralizations as the citation validator's _norm,
-# but line-wise and case-preserving so the rendered diff stays readable) ---
-_MD_NOISE = re.compile(r"[*_`|#]|\\(?=[_*])")
-_WS = re.compile(r"\s+")
-
-
-def _norm_line(s: str) -> str:
-    s = _MD_NOISE.sub("", s)
-    s = (s.replace("‘", "'").replace("’", "'")
-         .replace("“", '"').replace("”", '"')
-         .replace("–", "-").replace("—", "-"))
-    return _WS.sub(" ", s).strip()
-
-
-def _norm_lines(text: str) -> list[str]:
-    return [n for n in (_norm_line(l) for l in text.splitlines()) if n]
-
-
-@dataclass
-class ClauseSide:
-    tag: str        # [Ck] — unique across BOTH sides
-    release: str
-    clause: str
-    title: str
-    text: str       # full clause unit (parent text, capped)
-    chunk: dict
-
-
-@dataclass
-class ClauseDiff:
-    kind: str                   # "added" | "removed" | "changed" | "same"
-    a: ClauseSide | None = None
-    b: ClauseSide | None = None
-    renumbered: bool = False
-    diff_lines: list[str] = field(default_factory=list)
+__all__ = ["ClausePair", "ClauseSide", "resolve_clause_sets", "diff_releases"]
 
 
 def resolve_clause_sets(query: str, releases: tuple[str, str], retriever: Retriever,
@@ -88,73 +51,6 @@ def resolve_clause_sets(query: str, releases: tuple[str, str], retriever: Retrie
                 chunk=h.chunk))
         sides[key] = out
     return sides
-
-
-def _title_sim(a: str, b: str) -> float:
-    from rapidfuzz import fuzz
-    return fuzz.token_sort_ratio(_norm_line(a).lower(), _norm_line(b).lower())
-
-
-def align_clauses(side_a: list[ClauseSide], side_b: list[ClauseSide]) -> list[ClauseDiff]:
-    """Primary key: clause number. Fallback: best title match >= threshold
-    among the leftovers (catches renumbering between releases)."""
-    by_a = {s.clause: s for s in side_a}
-    by_b = {s.clause: s for s in side_b}
-    diffs: list[ClauseDiff] = []
-
-    matched_b: set[str] = set()
-    for num, a in by_a.items():
-        if num in by_b:
-            matched_b.add(num)
-            diffs.append(_pair_diff(a, by_b[num], renumbered=False))
-
-    left_a = [a for n, a in by_a.items() if n not in by_b]
-    left_b = [b for n, b in by_b.items() if n not in matched_b]
-    for a in left_a:
-        best, best_score = None, 0.0
-        for b in left_b:
-            sc = _title_sim(a.title, b.title)
-            if sc > best_score:
-                best, best_score = b, sc
-        if best is not None and best_score >= TITLE_SIM_THRESHOLD:
-            left_b.remove(best)
-            diffs.append(_pair_diff(a, best, renumbered=True))
-        else:
-            diffs.append(ClauseDiff(kind="removed", a=a))
-    for b in left_b:
-        diffs.append(ClauseDiff(kind="added", b=b))
-    return diffs
-
-
-def _pair_diff(a: ClauseSide, b: ClauseSide, renumbered: bool) -> ClauseDiff:
-    la, lb = _norm_lines(a.text), _norm_lines(b.text)
-    if la == lb:
-        return ClauseDiff(kind="same", a=a, b=b, renumbered=renumbered)
-    lines = [l for l in difflib.unified_diff(la, lb, lineterm="", n=1)
-             if not l.startswith(("---", "+++"))]
-    if len(lines) > MAX_DIFF_LINES:
-        lines = lines[:MAX_DIFF_LINES] + ["… (diff truncated)"]
-    return ClauseDiff(kind="changed", a=a, b=b, renumbered=renumbered,
-                      diff_lines=lines)
-
-
-def render_diff(diffs: list[ClauseDiff], rel_a: str, rel_b: str) -> str:
-    """Structured, deterministic diff report — the ground truth the LLM
-    synthesizes over (and the artifact shown to the user first)."""
-    parts: list[str] = []
-    for d in sorted((d for d in diffs if d.kind != "same"),
-                    key=lambda d: (d.b or d.a).clause):
-        if d.kind == "added":
-            parts.append(f"== ADDED in {rel_b}: §{d.b.clause} {d.b.title} {d.b.tag}")
-        elif d.kind == "removed":
-            parts.append(f"== REMOVED since {rel_a}: §{d.a.clause} {d.a.title} {d.a.tag}")
-        else:
-            head = (f"== CHANGED: §{d.a.clause} {d.a.title} "
-                    f"({d.a.tag} {rel_a} vs {d.b.tag} {rel_b})")
-            if d.renumbered:
-                head += f" [renumbered §{d.a.clause} -> §{d.b.clause}]"
-            parts.append(head + "\n" + "\n".join(d.diff_lines))
-    return "\n\n".join(parts)
 
 
 # --- synthesis -----------------------------------------------------------
@@ -226,7 +122,7 @@ def diff_releases(question: str, retriever: Retriever, release_a: str, release_b
     diffs = align_clauses(side_a, side_b)
     rendered = render_diff(diffs, release_a, release_b)
     if not rendered:
-        n = sum(d.kind == "same" for d in diffs)
+        n = sum(d.kind == "unchanged" for d in diffs)
         return (f"No changes: the {n} clause(s) retrieved for this question are "
                 f"textually identical between {release_a} and {release_b}.",
                 ValidatorReport(checks=[], passed=True), {}, rendered)
