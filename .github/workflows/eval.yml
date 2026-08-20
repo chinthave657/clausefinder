@@ -1,13 +1,13 @@
 name: Eval
 
-# Retrieval + answer-quality eval against the committed dev index (~5k
-# TS 38.331 Rel-18 chunks). Needs NVIDIA_API_KEY (answer + judge calls) —
-# forks don't get repo secrets, so the job is skipped rather than failed
-# when the secret is absent (design §6: eval is a build-plan exit gate, not
-# a fork-PR blocker).
+# Retrieval + answer-quality eval. No index is committed (data/ is
+# gitignored), so this cannot run on ordinary CI — it is manual-dispatch
+# only, for a runner that has built or downloaded an index first, plus
+# NVIDIA_API_KEY for answer/judge calls. The everyday gate is ci.yml
+# (lint + 87 unit tests); this workflow is the deep gate (design §6).
 
 on:
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   eval:
