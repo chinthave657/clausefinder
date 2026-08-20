@@ -257,13 +257,48 @@ def _ask_pipeline(question: str, release: str | None, api_key: str | None):
                api_key=api_key or None)
 
 
+CONDENSE_SYSTEM = (
+    "Rewrite the user's latest message as ONE standalone 3GPP question, "
+    "resolving pronouns and references (e.g. 'explain more', 'what about "
+    "Rel-18?') from the conversation. Preserve all technical identifiers "
+    "exactly. If it is already standalone, return it unchanged. Return ONLY "
+    "the question text.")
+
+
+def _standalone_question(question: str, history: list[dict],
+                         api_key: str | None) -> str:
+    """Follow-up condensation: retrieval is stateless, so anaphoric
+    follow-ups ('explain more') must become standalone questions first.
+    One cheap Nano call; on any failure fall back to the raw question."""
+    turns = [m for m in (history or []) if m.get("role") in ("user", "assistant")][-6:]
+    if not turns:
+        return question
+    try:
+        from agent.answer import NO_THINK, _client, _content
+        client, model = _client(api_key)
+        convo = "\n".join(f"{m['role']}: {str(m['content'])[:400]}" for m in turns)
+        resp = client.chat.completions.create(
+            model=model, temperature=0.0, max_tokens=120,
+            messages=[{"role": "system", "content": CONDENSE_SYSTEM},
+                      {"role": "user",
+                       "content": f"Conversation:\n{convo}\n\nLatest message: {question}"}],
+            extra_body=NO_THINK)
+        out = _content(resp).strip().strip('"')
+        return out if 5 < len(out) < 400 else question
+    except Exception:
+        return question
+
+
 def run_ask(question: str, release_choice: str, history: list[dict],
             api_key: str, request: gr.Request):
     question = (question or "").strip()
     if not question:
         yield history, "", ""
         return
-    history = (history or []) + [{"role": "user", "content": question}]
+    raw_history = list(history or [])
+    history = raw_history + [{"role": "user", "content": question}]
+    if raw_history:
+        question = _standalone_question(question, raw_history, api_key or None)
     if not _consume_quota(request, bypass=bool(api_key)):
         yield (history + [{"role": "assistant", "content": CAPACITY_BANNER}],
                "", "")
