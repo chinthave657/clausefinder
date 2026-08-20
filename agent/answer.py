@@ -102,9 +102,13 @@ def _context_block(retriever: Retriever, hits: list[Retrieved]) -> tuple[str, di
 
 def ask(question: str, retriever: Retriever, release: str | None = None,
         acronyms: dict | None = None,
-        api_key: str | None = None) -> tuple[str, ValidatorReport, dict[str, dict]]:
-    q = enhance_query(question, acronyms or {})
-    hits = retriever.search(q, release=release)
+        api_key: str | None = None,
+        hits: list | None = None) -> tuple[str, ValidatorReport, dict[str, dict]]:
+    """hits: optionally precomputed retrieval results — lets GPU-quota hosts
+    (ZeroGPU) run retrieval inside the GPU window and LLM synthesis outside."""
+    if hits is None:
+        q = enhance_query(question, acronyms or {})
+        hits = retriever.search(q, release=release)
     if not hits:
         return ("No supporting clauses found in the indexed specs.",
                 ValidatorReport(checks=[], passed=False), {})

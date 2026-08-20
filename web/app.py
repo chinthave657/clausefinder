@@ -251,10 +251,20 @@ def _stream(history: list[dict], text: str):
 # --------------------------------------------------------------------- ask
 
 @GPU
+def _gpu_retrieve(question: str, release: str | None):
+    """Only this needs CUDA (query embed + rerank, ~1-2s). Runs inside the
+    ZeroGPU window; LLM synthesis (network-bound) runs outside it so a slow
+    API call can never abort the GPU task."""
+    from agent.tools.retrieval import enhance_query
+    r = _retriever()
+    return r.search(enhance_query(question, _ACRONYMS), release=release)
+
+
 def _ask_pipeline(question: str, release: str | None, api_key: str | None):
     from agent.answer import ask
+    hits = _gpu_retrieve(question, release)
     return ask(question, _retriever(), release=release, acronyms=_ACRONYMS,
-               api_key=api_key or None)
+               api_key=api_key or None, hits=hits)
 
 
 CONDENSE_SYSTEM = (
