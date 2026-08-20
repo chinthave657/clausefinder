@@ -1,0 +1,113 @@
+{
+ "timestamp": "2026-08-20T03:14:38.573990+00:00",
+ "n": 9,
+ "validator_pass_rate": 1.0,
+ "gold_cited_rate": 0.8888888888888888,
+ "judge_score_distribution": {
+  "wrong": 1,
+  "partial": 0,
+  "correct": 8
+ },
+ "judge_mean_score": 1.7777777777777777,
+ "results": [
+  {
+   "id": "g001",
+   "question": "What actions does the UE take upon reception of an RRCReconfiguration message?",
+   "validator_passed": true,
+   "required_clauses_cited": true,
+   "judge_score": 2,
+   "judge_label": "correct",
+   "citation_only": true,
+   "judge_parse_failed": false,
+   "judge_rationale": "citation-only: no gold_answer_points; scored on required-clause citation alone."
+  },
+  {
+   "id": "g002",
+   "question": "How does the UE acquire the MIB and SIB1?",
+   "validator_passed": true,
+   "required_clauses_cited": true,
+   "judge_score": 2,
+   "judge_label": "correct",
+   "citation_only": true,
+   "judge_parse_failed": false,
+   "judge_rationale": "citation-only: no gold_answer_points; scored on required-clause citation alone."
+  },
+  {
+   "id": "g003",
+   "question": "When is a stored SIB considered valid and when must the UE re-acquire it?",
+   "validator_passed": true,
+   "required_clauses_cited": true,
+   "judge_score": 2,
+   "judge_label": "correct",
+   "citation_only": true,
+   "judge_parse_failed": false,
+   "judge_rationale": "citation-only: no gold_answer_points; scored on required-clause citation alone."
+  },
+  {
+   "id": "g004",
+   "question": "What are the signalling radio bearers and what is each SRB used for?",
+   "validator_passed": true,
+   "required_clauses_cited": true,
+   "judge_score": 2,
+   "judge_label": "correct",
+   "citation_only": true,
+   "judge_parse_failed": false,
+   "judge_rationale": "citation-only: no gold_answer_points; scored on required-clause citation alone."
+  },
+  {
+   "id": "g005",
+   "question": "What triggers the RRC re-establishment procedure?",
+   "validator_passed": true,
+   "required_clauses_cited": true,
+   "judge_score": 2,
+   "judge_label": "correct",
+   "citation_only": true,
+   "judge_parse_failed": false,
+   "judge_rationale": "citation-only: no gold_answer_points; scored on required-clause citation alone."
+  },
+  {
+   "id": "g006",
+   "question": "How does a UE request on-demand system information?",
+   "validator_passed": true,
+   "required_clauses_cited": false,
+   "judge_score": 0,
+   "judge_label": "wrong",
+   "citation_only": true,
+   "judge_parse_failed": false,
+   "judge_rationale": "citation-only: no gold_answer_points; scored on required-clause citation alone."
+  },
+  {
+   "id": "g007",
+   "question": "What UE states exist in NR RRC and what are the transitions between them?",
+   "validator_passed": true,
+   "required_clauses_cited": true,
+   "judge_score": 2,
+   "judge_label": "correct",
+   "citation_only": true,
+   "judge_parse_failed": false,
+   "judge_rationale": "citation-only: no gold_answer_points; scored on required-clause citation alone."
+  },
+  {
+   "id": "g008",
+   "question": "What happens on radio link failure detection in RRC_CONNECTED?",
+   "validator_passed": true,
+   "required_clauses_cited": true,
+   "judge_score": 2,
+   "judge_label": "correct",
+   "citation_only": true,
+   "judge_parse_failed": false,
+   "judge_rationale": "citation-only: no gold_answer_points; scored on required-clause citation alone."
+  },
+  {
+   "id": "g009",
+   "question": "How is conditional handover (CHO) configured and executed?",
+   "validator_passed": true,
+   "required_clauses_cited": true,
+   "judge_score": 2,
+   "judge_label": "correct",
+   "citation_only": true,
+   "judge_parse_failed": false,
+   "judge_rationale": "citation-only: no gold_answer_points; scored on required-clause citation alone."
+  }
+ ]
+}

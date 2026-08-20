@@ -20,9 +20,8 @@
     "Rel-18"
    ],
    "edges": 143433,
-   "specs_note": "776 indexed of 782 in manifest; 6 specs produced zero embeddable chunks (ToC-only or empty conversions)"
+   "specs_note": "776 indexed of 782 in manifest; 6 specs produced zero embeddable chunks"
   },
-  "date": "2026-08-19",
   "known_hard": [
    "g006",
    "s23-11",
@@ -32,12 +31,21 @@
    "adv-07(trap)",
    "adv-08(trap)",
    "adv-09(trap)"
-  ]
+  ],
+  "date": "2026-08-19"
  },
  "abstain": {
   "hard_floor": 0.05,
   "soft_floor": 0.15,
   "result": "5/5 out-of-corpus abstain-or-caveat (2 hard, 3 caveat), 0 confident wrong-tech answers",
   "calibration": "abstain<=0.110 vs answerable>=0.119 top rerank score"
+ },
+ "answer": {
+  "validator_pass_rate": 1.0,
+  "gold_cited_rate": 0.8888888888888888,
+  "n": 9,
+  "set_from_timestamp": "2026-08-20T03:14:38.573990+00:00",
+  "set_at": "2026-08-20T03:14:38.574745+00:00",
+  "note": "n=9 starter set; full 106-question judged run is a pre-launch item"
  }
 }
