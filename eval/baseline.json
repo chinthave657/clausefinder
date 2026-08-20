@@ -1,11 +1,11 @@
 {
  "retrieval": {
   "golden_file": "eval/golden/all.jsonl",
-  "n": 106,
+  "n": 107,
   "config": "rerank@50, fuse@50, identifier-leg@0.6",
-  "recall@5": 0.868,
-  "recall@20": 0.906,
-  "mrr@10": 0.778,
+  "recall@5": 0.879,
+  "recall@20": 0.907,
+  "mrr@10": 0.788,
   "ablation_depth100": {
    "recall@5": 0.849,
    "recall@20": 0.906,
@@ -26,18 +26,19 @@
    "g006",
    "s23-11",
    "s29-17",
-   "s33-14",
    "s38-13",
+   "adv-05(un-abstained, new)",
    "adv-07(trap)",
    "adv-08(trap)",
    "adv-09(trap)"
   ],
-  "date": "2026-08-19"
+  "date": "2026-08-21",
+  "golden_audit": "multihop-critic audit 2026-08-21: 112 rows, 98 confirmed, 14 corrected (evidence-quoted); g009/s33-14 recoveries were label fixes, not retrieval gains"
  },
  "abstain": {
   "hard_floor": 0.05,
   "soft_floor": 0.15,
-  "result": "5/5 out-of-corpus abstain-or-caveat (2 hard, 3 caveat), 0 confident wrong-tech answers",
+  "result": "5/5 abstain-or-caveat (post-audit set: g010 rewritten to verified-absent TS 36.331 topic; adv-05 converted to real question after corpus fix invalidated its premise)",
   "calibration": "abstain<=0.110 vs answerable>=0.119 top rerank score"
  },
  "answer": {
