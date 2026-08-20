@@ -37,6 +37,53 @@ from web.theme import CSS, theme
 
 DB = ROOT / "data" / "index"
 PARSED = ROOT / "data" / "parsed"
+INDEX_DATASET = os.environ.get("CLAUSEFINDER_INDEX_DATASET", "chinthave/clausefinder-index")
+
+
+def _bootstrap_index() -> None:
+    """On HF Spaces (ephemeral disk) pull the prebuilt index from the gated
+    dataset at boot. Version-proof: lists files via the paginated HTTP tree
+    API (the hub library preinstalled in Space images returns EMPTY legacy
+    'siblings' for repos >1k files, so snapshot_download sees nothing) and
+    downloads each explicitly via hf_hub_download."""
+    if DB.exists() or not os.environ.get("HF_TOKEN"):
+        return
+    from concurrent.futures import ThreadPoolExecutor
+
+    import requests
+    from huggingface_hub import hf_hub_download
+
+    token = os.environ["HF_TOKEN"]
+    url = (f"https://huggingface.co/api/datasets/{INDEX_DATASET}"
+           "/tree/main/data?recursive=1&expand=0")
+    paths: list[str] = []
+    while url:
+        r = requests.get(url, headers={"Authorization": f"Bearer {token}"},
+                         timeout=60)
+        r.raise_for_status()
+        paths += [e["path"] for e in r.json() if e.get("type") == "file"]
+        url = r.links.get("next", {}).get("url")
+    wanted = [p for p in paths
+              if (p.startswith("data/index/")
+                  or (p.startswith("data/parsed/")
+                      and p.endswith((".json", ".jsonl"))))
+              and "/chunks.jsonl" not in p]      # 600MB, app never reads it
+    print(f"bootstrapping {len(wanted)} files from {INDEX_DATASET} …",
+          flush=True)
+
+    def fetch(p: str) -> None:
+        hf_hub_download(INDEX_DATASET, p, repo_type="dataset", token=token,
+                        local_dir=ROOT)
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        list(ex.map(fetch, wanted))
+    n = sum(1 for f in DB.rglob("*") if f.is_file()) if DB.exists() else 0
+    sz = (sum(f.stat().st_size for f in DB.rglob("*") if f.is_file())
+          if DB.exists() else 0)
+    print(f"index bootstrap done: {n} files, {sz / 1e9:.2f} GB", flush=True)
+
+
+_bootstrap_index()
 REPO_URL = "https://github.com/chinthave657/clausefinder"
 
 _RETRIEVER = None
