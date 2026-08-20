@@ -40,7 +40,7 @@ quotes short, exact, and traceable back to a specific clause; see
 
 ## No corpus redistribution in this repository
 
-**This repo contains no spec text.** `data/` (the downloaded corpus, the
+**This repo contains no spec documents or substantial spec text; eval-set rationales include only short (<15-word) attributed fragments used to justify gold clause labels, and test fixtures are synthetic.** `data/` (the downloaded corpus, the
 parsed chunks, and the built LanceDB index) is git-ignored
 (see `.gitignore`) and is never committed. What ships in the repo is:
 

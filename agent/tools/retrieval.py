@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -19,6 +20,24 @@ RRF_K = 60
 VEC_W = 0.7          # OTel-568M (NDCG@10 90.1) outranks BM25 on NL questions;
 FTS_W = 0.3          # weighted RRF prevents mediocre dual-presence from
                      # beating single-leg excellence (no reranker until P1)
+ID_W = 0.6           # identifier leg: exact spec tokens (T304, SIB1, 5QI) are
+                     # the strongest relevance signal an engineer query carries;
+                     # without this leg, generic-term BM25 mass ("timer",
+                     # "expires") buries the one chunk naming the identifier
+
+# spec identifiers: T304, SIB1, N2, 5QI, F1AP, Msg3, KAMF … but not acronyms
+# that are pure words (UE, AMF) — those the vector leg handles
+_IDENT_RE = re.compile(r"\b(?=\w*\d)(?:[A-Za-z]{1,6}\d{1,4}[A-Za-z]{0,4}|5Q[Ii]|Msg[1-5])\b")
+_IDENT_STOP = {"3GPP", "5G", "4G", "2G", "3G", "5GS", "5GC", "5GMM", "5GSM",
+               "Rel17", "Rel18", "Rel19", "TS23", "TS24", "TS29", "TS33", "TS38"}
+
+
+def _identifiers(query: str) -> list[str]:
+    out = []
+    for m in _IDENT_RE.findall(query):
+        if m not in _IDENT_STOP and not re.fullmatch(r"\d+", m):
+            out.append(m)
+    return list(dict.fromkeys(out))
 TOP_FINAL = 8
 XREF_EXTRA = 4
 
@@ -95,10 +114,19 @@ class Retriever:
         vec_hits = vq.to_list()
         fts_hits = fq.to_list()
 
+        # identifier leg: exact-token FTS on spec identifiers in the query
+        id_hits: list[dict] = []
+        idents = _identifiers(query)
+        if idents:
+            iq = self.tbl.search(" ".join(idents), query_type="fts").limit(CAND_DEPTH)
+            if where:
+                iq = iq.where(where)
+            id_hits = iq.to_list()
+
         # Weighted reciprocal-rank fusion over capped depth
         scores: dict[str, float] = {}
         by_id: dict[str, dict] = {}
-        for hits, w in ((vec_hits, VEC_W), (fts_hits, FTS_W)):
+        for hits, w in ((vec_hits, VEC_W), (fts_hits, FTS_W), (id_hits, ID_W)):
             for rank, h in enumerate(hits[:FUSE_DEPTH]):
                 cid = h["id"]
                 scores[cid] = scores.get(cid, 0.0) + w / (RRF_K + rank + 1)

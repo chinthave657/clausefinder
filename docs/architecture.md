@@ -3,7 +3,7 @@
 This is a prose walkthrough of the ClauseFinder pipeline, stage by stage,
 with the reasoning behind each design choice — not just what the code does,
 but why it does it that way. The numbered constraints below are pinned in
-the [design document](https://github.com/venkych/clausefinder) §2; this doc
+the [design document](https://github.com/chinthave657/clausefinder) §2; this doc
 explains how they show up in the funnel. Code references point at the
 current implementation in `ingest/`, `agent/tools/retrieval.py`,
 `agent/answer.py`, `agent/diff.py`, and `agent/validators/citations.py`.

@@ -9,7 +9,7 @@ is built end-to-end on the NVIDIA agentic stack — NeMo Agent Toolkit,
 NeMo Guardrails, and Nemotron — plus the GSMA Open Telco AI ecosystem's
 corpus and domain-tuned OTel models.
 
-**Status:** early build (P0/P1 per the [design doc](https://github.com/venkych/clausefinder)) — dev index covers a subset of TS 38.331; full 5-series corpus and hosted demo are in progress.
+**Status:** early build (P0/P1 per the design doc (docs/architecture.md)) — full Rel-17+18 corpus indexed (391k chunks, 5 series); hosted demo in progress.
 
 ## Architecture
 
@@ -20,7 +20,7 @@ corpus and domain-tuned OTel models.
                                 │
 ┌───────────────────────────────▼─────────────────────────────────┐
 │ AGENT SERVICE (NAT workflow)                                    │
-│  Guardrails in: topic + prompt-injection (spec text = data)     │
+│  Guardrails (NAT workflow path): topic + prompt-injection (spec text = data)     │
 │        │                                                         │
 │  ROUTER — UI tab is the mode; regex pre-check for diff intent;  │
 │           Nano structured-output fallback only on ambiguity      │
@@ -28,7 +28,7 @@ corpus and domain-tuned OTel models.
 │  RETRIEVAL (deterministic)                                       │
 │   1. lexicon append (TR 21.905 + per-spec §3 terms)      [+6pp]  │
 │   2. BM25 top-100 ⊕ vector top-100 → weighted RRF                │
-│   3. rerank (OTel-Reranker-0.6B; CPU profile: Nano fallback)     │
+│   3. rerank (OTel-Reranker-0.6B; off by default on CPU — enable with CLAUSEFINDER_RERANK=1)     │
 │   4. parent expansion → full clause unit, deduped                │
 │   5. 1-hop xref expansion (≤4 chunks)                            │
 │   6. abstain check — below threshold ⇒ "no supporting clause"    │
@@ -49,7 +49,7 @@ corpus and domain-tuned OTel models.
 │ INDEX          │  │ LLM GATEWAY         │  │ INGEST (offline)      │
 │ LanceDB        │  │ build.nvidia.com /  │  │ GSMA/3GPP markdown →  │
 │ children 200-  │  │ OpenRouter, BYO key │  │ clause-aware chunk    │
-│ 350 tok +      │  │ (PKCE + paste-key)  │  │ (parents ≤1200 tok,   │
+│ 350 tok +      │  │ (paste-key)  │  │ (parents ≤1200 tok,   │
 │ breadcrumb,    │  │                      │  │ children 200-350) →   │
 │ parents, xref  │  │                      │  │ xref edges → OTel-    │
 │ edges; tantivy │  │                      │  │ 568M embed → LanceDB  │
@@ -63,10 +63,12 @@ why lexicon-append instead of substitution, etc.) is in
 
 ## Quickstart
 
+> **Expected footprint:** the default ingest (5 series × Rel-17/18) downloads ~0.6 GB of markdown and embeds ~390k chunks (hours on CPU, ~1.5 h on a T4 — see `colab/embed_corpus.ipynb`). Fast dev path: `--spec 38331 --releases Rel-18` (~3k chunks, minutes).
+
 ### Docker (self-host, CPU, BYO key)
 
 ```bash
-git clone https://github.com/venkych/clausefinder && cd clausefinder
+git clone https://github.com/chinthave657/clausefinder && cd clausefinder
 cp .env.example .env            # add NVIDIA_API_KEY or OPENROUTER_API_KEY
 make ingest index               # build a local corpus + LanceDB index (one-time)
 docker compose up --build       # Gradio on http://localhost:7860
@@ -90,7 +92,7 @@ make demo                       # Gradio locally (uv run python web/app.py)
 ## Try it live
 
 `[hosted demo — coming soon]` — HF ZeroGPU Space, launching with the full
-5-series corpus (see [build plan](https://github.com/venkych/clausefinder)).
+5-series corpus (see build plan).
 Until then, run it yourself with the Docker quickstart above.
 
 ## Benchmarks

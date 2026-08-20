@@ -11,12 +11,11 @@ import asyncio
 from pathlib import Path
 
 from dotenv import load_dotenv
-from pydantic import Field
-
 from nat.builder.builder import Builder
 from nat.builder.function_info import FunctionInfo
 from nat.cli.register_workflow import register_function
 from nat.data_models.function import FunctionBaseConfig
+from pydantic import Field
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 

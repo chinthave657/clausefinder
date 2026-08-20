@@ -56,6 +56,7 @@ def _chat(client, model: str, messages: list[dict], max_tokens: int = 900) -> st
             return text
     return text
 
+# Domain rules below adapted from lugasia/3gpp-skill (MIT) — see NOTICE.
 SYSTEM = """You are ClauseFinder, a 3GPP standards assistant for telecom engineers.
 Rules:
 - Answer ONLY from the provided clause excerpts. If they don't contain the answer, say so and name the specs you searched.

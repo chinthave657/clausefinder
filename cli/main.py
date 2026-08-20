@@ -11,6 +11,18 @@ from rich.panel import Panel
 load_dotenv()
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
+
+def _open_retriever():
+    from agent.tools.retrieval import Retriever
+    try:
+        return Retriever(DB)
+    except Exception as e:
+        if "chunks" in str(e) or "not found" in str(e).lower() or not DB.exists():
+            console.print("[red]No index at data/index[/] — build one first: "
+                          "[bold]make ingest index[/] (see README quickstart)")
+            raise typer.Exit(code=1)
+        raise
+
 console = Console()
 
 DB = Path("data/index")
@@ -20,8 +32,7 @@ PARSED = Path("data/parsed")
 @app.command()
 def search(query: str, release: str = typer.Option(None), top: int = 8):
     """Retrieval only — inspect what the index returns (no LLM)."""
-    from agent.tools.retrieval import Retriever
-    r = Retriever(DB)
+    r = _open_retriever()
     for hit in r.search(query, release=release, top=top):
         c = hit.chunk
         console.print(f"[bold]{hit.tag}[/] {c['spec']} §{c['clause']} "
@@ -33,8 +44,8 @@ def search(query: str, release: str = typer.Option(None), top: int = 8):
 def ask(question: str, release: str = typer.Option(None)):
     """Clause-cited answer (LLM via NVIDIA_API_KEY or OPENROUTER_API_KEY)."""
     from agent.answer import ask as _ask
-    from agent.tools.retrieval import Retriever, load_acronyms
-    r = Retriever(DB)
+    from agent.tools.retrieval import load_acronyms
+    r = _open_retriever()
     answer, report, tagmap = _ask(question, r, release=release,
                                   acronyms=load_acronyms(PARSED))
     console.print(Panel(answer, title="answer", border_style="green" if report.passed else "yellow"))
@@ -64,8 +75,8 @@ def diff(question: str,
     Gracefully reports when a requested release is absent from the index —
     the dev index carries Rel-18 only until the full corpus lands (design §6 P3)."""
     from agent.diff import diff_releases
-    from agent.tools.retrieval import Retriever, load_acronyms
-    r = Retriever(DB)
+    from agent.tools.retrieval import load_acronyms
+    r = _open_retriever()
     avail = {row["release"] for row in r.tbl.to_arrow().select(["release"]).to_pylist()}
     missing = [rel for rel in (release_a, release_b) if rel not in avail]
     if missing:

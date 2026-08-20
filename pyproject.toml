@@ -28,6 +28,7 @@ clausefinder = "cli.main:app"
 package = true
 
 [tool.ruff]
+extend-exclude = ["*.ipynb"]
 line-length = 120
 target-version = "py312"
 
@@ -52,3 +53,6 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["ingest", "agent", "cli"]
+
+[project.entry-points."nat.plugins"]
+clausefinder = "agent.nat_functions"

@@ -19,9 +19,10 @@
     "Rel-17",
     "Rel-18"
    ],
-   "edges": 143433
+   "edges": 143433,
+   "specs_note": "776 indexed of 782 in manifest; 6 specs produced zero embeddable chunks (ToC-only or empty conversions)"
   },
-  "date": "2026-08-20"
+  "date": "2026-08-19"
  },
  "abstain": {
   "hard_floor": 0.05,

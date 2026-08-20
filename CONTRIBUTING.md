@@ -28,7 +28,7 @@ make test   # uv run pytest -q  — no API keys or index needed
 make check  # both
 ```
 
-CI runs exactly `ruff check .` and `pytest -q`. Unit tests must stay
+CI runs `uv run ruff check .` and `uv run pytest -q`. Unit tests must stay
 runnable without API keys and without the LanceDB index: use the fixture
 spec in `tests/fixtures/mini_spec.md` and stub tables (see
 `tests/test_retrieval.py`) rather than hitting the real index.

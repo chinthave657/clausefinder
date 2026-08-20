@@ -27,7 +27,7 @@ and isn't required to self-host.
 ## CPU profile (default)
 
 ```bash
-git clone https://github.com/venkych/clausefinder && cd clausefinder
+git clone https://github.com/chinthave657/clausefinder && cd clausefinder
 cp .env.example .env
 # edit .env: set NVIDIA_API_KEY or OPENROUTER_API_KEY
 

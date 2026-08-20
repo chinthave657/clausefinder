@@ -71,6 +71,8 @@ def build(
     # file, different ordering) must never resume against the full-run offset.
     ckpt = db_path / f".embed_checkpoint_{parsed.name}"
     total = sum(1 for _ in (parsed / "chunks.jsonl").open())
+    if total == 0:
+        raise SystemExit(f"{parsed}/chunks.jsonl is empty — run the chunker first")
     db = lancedb.connect(db_path)
 
     if fresh and "chunks" in db.table_names():

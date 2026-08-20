@@ -29,3 +29,10 @@ GSMA Open Telco LLM Benchmarks corpus (3GPP specifications)
   V18.0.0, clause 5.3.5.3." Do not present ClauseFinder output as an
   authoritative copy of a 3GPP specification; verify against the
   published spec at https://www.3gpp.org/DynaReport/.
+
+This product uses OTel-Reranker-0.6B by farbodtavakkoli (Apache License 2.0),
+a Qwen3-0.6B (Apache License 2.0) cross-encoder fine-tune:
+https://huggingface.co/farbodtavakkoli/OTel-Reranker-0.6B
+
+Domain prompt rules in agent/answer.py are adapted from 3gpp-skill by lugasia
+(MIT License): https://github.com/lugasia/3gpp-skill

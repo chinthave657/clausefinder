@@ -233,10 +233,14 @@ def _split_children(body: str) -> list[tuple[str, bool]]:
 
 
 def parse_corpus(corpus_root: Path, out_dir: Path) -> None:
+    files = sorted(corpus_root.rglob("raw.md"))
+    if not files:
+        raise SystemExit(f"no raw.md files under {corpus_root} — run "
+                         "`uv run python ingest/download_gsma.py` first")
     out_dir.mkdir(parents=True, exist_ok=True)
     all_stats = []
     with (out_dir / "chunks.jsonl").open("w") as cf, (out_dir / "edges.jsonl").open("w") as ef:
-        for md in sorted(corpus_root.rglob("raw.md")):
+        for md in files:
             release = next(p for p in md.parts if p.startswith("Rel-"))
             series = int(next(p for p in md.parts if p.endswith("_series")).split("_")[0])
             try:

@@ -2,7 +2,7 @@
 
 Three tabs = router modes (design §2, rule-first: the UI tab IS the mode):
   Ask     — hybrid retrieval + Nano synthesis with citation validator
-  Diff    — release diff (Super-120B synthesis; graceful stub until wired)
+  Diff    — release diff (deterministic clause diff + Super-120B synthesis)
   Explain — one clause fetched by metadata (no vector search) + Nano explain
 
 Run locally:  uv run python web/app.py
@@ -37,7 +37,7 @@ from web.theme import CSS, theme
 
 DB = ROOT / "data" / "index"
 PARSED = ROOT / "data" / "parsed"
-REPO_URL = "https://github.com/venkych/clausefinder"
+REPO_URL = "https://github.com/chinthave657/clausefinder"
 
 _RETRIEVER = None
 _ACRONYMS: dict[str, str] = {}
@@ -133,8 +133,10 @@ def _borrowed_key(api_key: str | None):
 def _releases() -> list[str]:
     try:
         tbl = _retriever().tbl
-        rels = sorted({r["release"] for r in
-                       tbl.search().select(["release"]).limit(10000).to_list()})
+        # full single-column scan: a row-limit sample misses releases that
+        # don't appear early in insertion order (Rel-18 sat after 147k Rel-17
+        # rows and vanished from the dropdown)
+        rels = sorted(set(tbl.to_arrow().select(["release"])["release"].to_pylist()))
     except Exception:
         rels = ["Rel-18"]
     return ["All releases"] + rels
@@ -286,15 +288,7 @@ def run_diff(question: str, rel_a: str, rel_b: str, history: list[dict],
     history = history + [{"role": "assistant", "content": "_Resolving clause "
                           "sets on both releases (~1 min)…_"}]
     yield history, "", ""
-    try:
-        from agent import diff as diff_mod  # owned by the diff workstream
-    except ImportError:
-        msg = ("Diff mode needs a second release in the index (a larger ingest "
-               "is in progress) and the `agent/diff.py` Super-120B synthesis "
-               "agent. It is not wired up in this build yet — Ask and Explain "
-               "are fully functional.")
-        yield history[:-1] + [{"role": "assistant", "content": msg}], "", ""
-        return
+    from agent import diff as diff_mod
     try:
         fn = getattr(diff_mod, "diff", None) or getattr(diff_mod, "diff_releases", None) \
             or getattr(diff_mod, "run")
@@ -462,4 +456,6 @@ demo = build_demo()
 demo.queue(max_size=20, default_concurrency_limit=2)
 
 if __name__ == "__main__":
-    demo.launch(theme=theme, css=CSS)
+    demo.launch(theme=theme, css=CSS,
+                server_name=os.environ.get("GRADIO_SERVER_NAME", "127.0.0.1"),
+                server_port=int(os.environ.get("PORT", "7860")))
