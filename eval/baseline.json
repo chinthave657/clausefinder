@@ -2,10 +2,10 @@
  "retrieval": {
   "golden_file": "eval/golden/all.jsonl",
   "n": 106,
-  "config": "rerank@50, fuse@50",
+  "config": "rerank@50, fuse@50, identifier-leg@0.6",
   "recall@5": 0.868,
-  "recall@20": 0.896,
-  "mrr@10": 0.768,
+  "recall@20": 0.906,
+  "mrr@10": 0.778,
   "ablation_depth100": {
    "recall@5": 0.849,
    "recall@20": 0.906,
@@ -22,7 +22,17 @@
    "edges": 143433,
    "specs_note": "776 indexed of 782 in manifest; 6 specs produced zero embeddable chunks (ToC-only or empty conversions)"
   },
-  "date": "2026-08-19"
+  "date": "2026-08-19",
+  "known_hard": [
+   "g006",
+   "s23-11",
+   "s29-17",
+   "s33-14",
+   "s38-13",
+   "adv-07(trap)",
+   "adv-08(trap)",
+   "adv-09(trap)"
+  ]
  },
  "abstain": {
   "hard_floor": 0.05,

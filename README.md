@@ -106,8 +106,9 @@ satellite suite, contamination caveat for OTel-2.0) lives in
 | Benchmark | Config | Metric | Result |
 |---|---|---|---|
 | Golden set (starter 9, ask mode, full 322k corpus) | Nano + ClauseFinder (rerank on) | validator-pass + gold-cited | 8/9 |
-| Retrieval (322k chunks, no rerank) | — | recall@5 / recall@20 / MRR@10 | 0.67 / 1.00 / 0.52 |
-| Retrieval (322k chunks, + OTel-Reranker-0.6B) | — | recall@5 / recall@20 / MRR@10 | **0.89 / 1.00 / 0.73** |
+| Retrieval — full corpus (391,487 chunks, 776 specs, Rel-17+18; 106-question golden set) | rerank@50 + identifier leg | recall@5 / recall@20 / MRR@10 | **0.87 / 0.91 / 0.78** |
+| Retrieval — depth-100 ablation (rejected: top-5 regression at 2× latency) | rerank@100 | recall@5 / recall@20 / MRR@10 | 0.85 / 0.91 / 0.78 |
+| Abstain rail (5 out-of-corpus adversarial questions) | calibrated two-floor gate | refused-or-caveated | **5/5** (was 0/5 pre-rail) |
 | TeleQnA Rel-17 (734Q) | bare Nano | accuracy | pending |
 | TeleQnA Rel-17 (734Q) | Nano + ClauseFinder | accuracy | pending |
 | TeleQnA Rel-18 (780Q) | bare Nano | accuracy | pending |
