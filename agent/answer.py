@@ -123,7 +123,9 @@ def ask(question: str, retriever: Retriever, release: str | None = None,
                 f"searched: {', '.join(searched[:6])}. If the answer lives in "
                 f"a spec series ClauseFinder doesn't index (e.g. 36-series "
                 f"LTE, O-RAN, 3GPP2, IEEE), that's why — see the README for "
-                f"how to self-host with additional series.",
+                f"how to self-host with additional series. Tip: phrasing the "
+                f"question in 3GPP terminology often helps — e.g. the industry "
+                f"term 'AI-RAN' is covered in the specs as 'AI/ML for NG-RAN'.",
                 ValidatorReport(checks=[], passed=True), {})
     weak = top_rr is not None and top_rr < ABSTAIN_SOFT
 
