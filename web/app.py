@@ -286,7 +286,10 @@ def _standalone_question(question: str, history: list[dict],
     try:
         from agent.answer import NO_THINK, _client, _content
         client, model = _client(api_key)
-        convo = "\n".join(f"{m['role']}: {str(m['content'])[:400]}" for m in turns)
+        def _clip(s: str, n: int = 400) -> str:
+            # word-boundary clip: mid-word truncation degrades the condenser
+            return s if len(s) <= n else s[:n].rsplit(" ", 1)[0] + " …"
+        convo = "\n".join(f"{m['role']}: {_clip(str(m['content']))}" for m in turns)
         resp = client.chat.completions.create(
             model=model, temperature=0.0, max_tokens=120,
             messages=[{"role": "system", "content": CONDENSE_SYSTEM},

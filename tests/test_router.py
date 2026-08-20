@@ -87,3 +87,16 @@ def test_llm_route_defaults_ask_with_no_api_key(monkeypatch):
 def test_llm_route_never_called_but_parse_is_enum_tolerant(raw, expected):
     from agent.router import _parse_mode
     assert _parse_mode(raw) == expected
+
+
+def test_term_alias_expansion():
+    from agent.tools.retrieval import enhance_query
+    out = enhance_query("explain abot AI-RAN?", {})
+    assert "AI/ML for NG-RAN" in out
+    assert out.startswith("explain abot AI-RAN?")  # append, never substitute
+
+
+def test_term_alias_case_and_punct():
+    from agent.tools.retrieval import enhance_query
+    assert "AI/ML for NG-RAN" in enhance_query("What is ai-ran, exactly?", {})
+    assert "AI/ML" not in enhance_query("What is NWDAF?", {})

@@ -25,6 +25,10 @@ CONTEXT_CAP_TOKENS = 6000
 # HARD..SOFT -> answer but lead with an explicit weak-match caveat.
 ABSTAIN_HARD = 0.05
 ABSTAIN_SOFT = 0.15
+ABSTAIN_TIP = (
+    "Tip: phrasing the question in 3GPP terminology (procedure names, message "
+    "names, TS numbers) usually retrieves better than industry or marketing "
+    "terms.")
 WEAK_MATCH_CAVEAT = (
     "> **Weak match:** the indexed specs may not directly cover this question — "
     "the excerpts below are the closest material found, but verify the "
@@ -123,9 +127,7 @@ def ask(question: str, retriever: Retriever, release: str | None = None,
                 f"searched: {', '.join(searched[:6])}. If the answer lives in "
                 f"a spec series ClauseFinder doesn't index (e.g. 36-series "
                 f"LTE, O-RAN, 3GPP2, IEEE), that's why — see the README for "
-                f"how to self-host with additional series. Tip: phrasing the "
-                f"question in 3GPP terminology often helps — e.g. the industry "
-                f"term 'AI-RAN' is covered in the specs as 'AI/ML for NG-RAN'.",
+                f"how to self-host with additional series. " + ABSTAIN_TIP,
                 ValidatorReport(checks=[], passed=True), {})
     weak = top_rr is not None and top_rr < ABSTAIN_SOFT
 

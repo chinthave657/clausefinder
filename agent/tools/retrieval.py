@@ -199,7 +199,24 @@ def load_acronyms(parsed_dir: Path) -> dict[str, str]:
     return json.loads(p.read_text()) if p.exists() else {}
 
 
+# Curated industry-term → spec-terminology pointers (append-only, reviewed by
+# hand). These are RELATED-terminology hints for retrieval, NOT equivalences —
+# the answer is still grounded in whatever the retrieved clauses actually say.
+# E.g. "AI-RAN" (industry: converged AI+RAN infrastructure) is a distinct
+# concept from 3GPP's "AI/ML for NG-RAN" (Rel-18 data-collection support);
+# the alias only helps retrieval surface the adjacent spec material.
+TERM_ALIASES: dict[str, str] = {
+    "AI-RAN": "related 3GPP terminology: AI/ML for NG-RAN, RAN intelligence",
+    "AIRAN": "related 3GPP terminology: AI/ML for NG-RAN, RAN intelligence",
+}
+
+
 def enhance_query(query: str, acronyms: dict[str, str]) -> str:
-    """Append (never substitute) expansions — Telco-RAG lexicon step."""
-    hits = [f"{a} = {x}" for a, x in acronyms.items() if a in query.split()]
+    """Append (never substitute) expansions — Telco-RAG lexicon step.
+    Acronym matching is exact/case-sensitive (3GPP acronyms are case-bearing);
+    alias matching is punctuation-tolerant and case-insensitive."""
+    raw_tokens = query.split()
+    hits = [f"{a} = {x}" for a, x in acronyms.items() if a in raw_tokens]
+    norm = {t.strip("?,.!;:()\"'").lower() for t in raw_tokens}
+    hits += [f"{k} — {v}" for k, v in TERM_ALIASES.items() if k.lower() in norm]
     return query + ("\n(" + "; ".join(hits) + ")" if hits else "")
