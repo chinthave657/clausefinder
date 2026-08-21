@@ -287,11 +287,12 @@ def _gpu_diff_resolve(question: str, release_a: str, release_b: str):
 
 
 def _zerogpu_broken(e: Exception) -> bool:
-    """ZeroGPU-side failures worth a CPU fallback: worker came up with no
-    CUDA device (platform bug) or the visitor's GPU quota is exhausted."""
-    t = str(e)
-    return ("No CUDA GPUs" in t or "ZeroGPU quota" in t
-            or "GPU task aborted" in t)
+    """Any failure inside a GPU-window function is CPU-retryable — those
+    functions only do retrieval. Spaces strips exception details when
+    re-raising from the worker (a broken allocation surfaces as
+    gr.Error("RuntimeError") with no CUDA/quota text), so string-matching
+    the cause is impossible; the only unretryable case is a missing index."""
+    return not isinstance(e, IndexNotReady)
 
 
 def _cpu_fallback(fn, *args):
@@ -318,7 +319,7 @@ def _ask_pipeline(question: str, release: str | None, api_key: str | None):
     except Exception as e:
         if not _zerogpu_broken(e):
             raise
-        print(f"ZeroGPU unavailable ({str(e)[:80]}) — CPU fallback", flush=True)
+        print(f"ZeroGPU failed ({type(e).__name__}: {str(e)[:80]!r}) — CPU fallback", flush=True)
         hits = _cpu_fallback(
             lambda: _retriever().search(enhance_query(question, _ACRONYMS),
                                         release=release))
@@ -449,7 +450,7 @@ def run_diff(question: str, rel_a: str, rel_b: str, history: list[dict],
         except Exception as e:
             if not _zerogpu_broken(e):
                 raise
-            print(f"ZeroGPU unavailable ({str(e)[:80]}) — CPU fallback (diff)", flush=True)
+            print(f"ZeroGPU failed ({type(e).__name__}: {str(e)[:80]!r}) — CPU fallback (diff)", flush=True)
             from agent.diff import resolve_clause_sets
             sides = _cpu_fallback(
                 lambda: resolve_clause_sets(question, (rel_a, rel_b),
