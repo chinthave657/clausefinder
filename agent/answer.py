@@ -41,9 +41,13 @@ WEAK_MATCH_CAVEAT = (
 # headroom for billed-but-stripped reasoning tokens. /no_think in SYSTEM covers
 # providers that respect in-band directives. _chat's degenerate-retry backstops.
 NO_THINK_NVIDIA = {"chat_template_kwargs": {"thinking": False}}
-NO_THINK_OPENROUTER = {"reasoning": {"exclude": True},
-                       "provider": {"order": ["Novita", "DeepInfra"],
-                                    "allow_fallbacks": True}}
+# allow_fallbacks=False: overflow traffic was reaching a provider (Crusoe)
+# that reasons to the token cap and returns EMPTY content for both Nemotron
+# models — every "flaky model" symptom of 2026-08-21 was this one provider.
+# Better to fail fast into our own model-chain ladder than to route there.
+OR_PROVIDERS = {"order": ["Novita", "DeepInfra"], "allow_fallbacks": False}
+NO_THINK_OPENROUTER = {"reasoning": {"exclude": True}, "provider": OR_PROVIDERS}
+BARE_OPENROUTER = {"provider": OR_PROVIDERS}
 MAX_TOKENS_OPENROUTER = 2600  # answer ~900 + stripped-reasoning headroom (big-context questions reason long)
 # App attribution on OpenRouter rankings (free discovery channel)
 OR_HEADERS = {"HTTP-Referer": "https://github.com/chinthave657/clausefinder",
@@ -68,25 +72,33 @@ def _degenerate(text: str) -> bool:
 
 
 def _chat(client, model: str, messages: list[dict], max_tokens: int = 900) -> str:
-    """One completion; degenerate-output guard (empty/short/<unk> — reasoning
-    swallowing the budget, or the NVIDIA long-context serving bug) retries
-    twice with the endpoint's no-think config, then once bare."""
+    """Completion with a degenerate-output guard (empty/short/<unk>/reasoning
+    leak) and a MODEL FALLBACK CHAIN: the primary model (comma-first in
+    CLAUSEFINDER_MODEL_CHAIN or the passed model) gets two no-think attempts,
+    then each fallback model gets one, then a final bare attempt + salvage.
+    Lets the demo lead with a newer model (Lightning) while a reliable one
+    (Nano) guarantees an answer."""
     onrouter = "openrouter" in str(client.base_url)
     no_think = NO_THINK_OPENROUTER if onrouter else NO_THINK_NVIDIA
     if onrouter:
         max_tokens = max(max_tokens, MAX_TOKENS_OPENROUTER)
-    ladder = ((no_think, no_think, {}) if onrouter  # bare last: salvageable below
-              else (no_think, no_think, {}))
-    for extra in ladder:
-        resp = client.chat.completions.create(
-            model=model, messages=messages,
-            temperature=0.0, max_tokens=max_tokens, extra_body=extra)
+    chain_env = os.environ.get("CLAUSEFINDER_MODEL_CHAIN", "")
+    chain = [m.strip() for m in chain_env.split(",") if m.strip()] or [model]
+    attempts = [(chain[0], no_think), (chain[0], no_think)]
+    attempts += [(m, no_think) for m in chain[1:]]
+    attempts += [(chain[-1], BARE_OPENROUTER if onrouter else {})]
+    text = ""
+    for mdl, extra in attempts:
+        try:
+            resp = client.chat.completions.create(
+                model=mdl, messages=messages,
+                temperature=0.0, max_tokens=max_tokens, extra_body=extra)
+        except Exception:  # pinned providers busy (no-fallback 404/503) — next rung
+            continue
         text = _content(resp)
         if not _degenerate(text):
             return text
-        # salvage: bare attempts often emit reasoning THEN the real cited
-        # answer — cut everything before the first citation-bearing line
-        if "[C" in text:
+        if "[C" in text:  # salvage: reasoning THEN the real cited answer
             lines = text.splitlines()
             starts = [i for i, l in enumerate(lines) if "[C" in l]
             if starts:
