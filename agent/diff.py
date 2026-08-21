@@ -106,11 +106,13 @@ def _context_block(sides: dict[str, list[ClauseSide]]) -> tuple[str, dict[str, d
 
 
 def diff_releases(question: str, retriever: Retriever, release_a: str, release_b: str,
-                  acronyms: dict | None = None
+                  acronyms: dict | None = None, sides: dict | None = None
                   ) -> tuple[str, ValidatorReport, dict[str, dict], str]:
     """Full diff pipeline. Returns (answer, validator report, tagmap,
-    rendered deterministic diff)."""
-    sides = resolve_clause_sets(question, (release_a, release_b), retriever, acronyms)
+    rendered deterministic diff). sides: optionally precomputed clause sets —
+    lets ZeroGPU hosts run retrieval inside the GPU window, synthesis outside."""
+    if sides is None:
+        sides = resolve_clause_sets(question, (release_a, release_b), retriever, acronyms)
     keys = list(sides)
     side_a, side_b = sides[keys[0]], sides[keys[-1]]
 

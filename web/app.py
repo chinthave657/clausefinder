@@ -250,7 +250,8 @@ def _stream(history: list[dict], text: str):
 
 # --------------------------------------------------------------------- ask
 
-@GPU
+@GPU(duration=15)  # embed+rerank ≈ 2-4s on the H200 slice; 90s default was
+                    # draining visitor ZeroGPU quota 20x faster than needed
 def _gpu_retrieve(question: str, release: str | None):
     """Only this needs CUDA (query embed + rerank, ~1-2s). Runs inside the
     ZeroGPU window; LLM synthesis (network-bound) runs outside it so a slow
@@ -258,6 +259,12 @@ def _gpu_retrieve(question: str, release: str | None):
     from agent.tools.retrieval import enhance_query
     r = _retriever()
     return r.search(enhance_query(question, _ACRONYMS), release=release)
+
+
+@GPU(duration=30)  # two releases x clause-set retrieval
+def _gpu_diff_resolve(question: str, release_a: str, release_b: str):
+    from agent.diff import resolve_clause_sets
+    return resolve_clause_sets(question, (release_a, release_b), _retriever(), _ACRONYMS)
 
 
 def _ask_pipeline(question: str, release: str | None, api_key: str | None):
@@ -385,10 +392,10 @@ def run_diff(question: str, rel_a: str, rel_b: str, history: list[dict],
     yield history, "", ""
     from agent import diff as diff_mod
     try:
-        fn = getattr(diff_mod, "diff", None) or getattr(diff_mod, "diff_releases", None) \
-            or getattr(diff_mod, "run")
-        with _borrowed_key(api_key):
-            result = fn(question, _retriever(), rel_a, rel_b)
+        sides = _gpu_diff_resolve(question, rel_a, rel_b)   # GPU window: retrieval only
+        with _borrowed_key(api_key):                        # synthesis: network-bound, no GPU
+            result = diff_mod.diff_releases(question, _retriever(), rel_a, rel_b,
+                                            acronyms=_ACRONYMS, sides=sides)
         text, report, tagmap = result[0], result[1], result[2]
     except IndexNotReady:
         yield history[:-1] + [{"role": "assistant", "content": INDEX_BANNER}], "", ""
