@@ -395,13 +395,31 @@ def run_ask(question: str, release_choice: str, history: list[dict],
 
 # ----------------------------------------------------------------- explain
 
+_LAST_EXPLAINED: dict[str, str] = {}   # session_hash -> last parsed ref
+_LAST_EXPLAINED_LOCK = threading.Lock()
+
+
 def run_explain(ref: str, release_choice: str, history: list[dict],
                 api_key: str, request: gr.Request):
     ref = (ref or "").strip()
     if not ref:
         yield history, "", ""
         return
-    history = (history or []) + [{"role": "user", "content": f"Explain {ref}"}]
+    # Follow-up support: free text after an explained clause ("summarize this
+    # in 2 lines") reuses that clause with the text as the instruction.
+    from agent.explain import parse_ref
+    instruction = None
+    sid = getattr(request, "session_hash", None) or "anon"
+    if parse_ref(ref) is None:
+        with _LAST_EXPLAINED_LOCK:
+            prev = _LAST_EXPLAINED.get(sid)
+        if prev:
+            instruction, ref = ref, prev
+    else:
+        with _LAST_EXPLAINED_LOCK:
+            _LAST_EXPLAINED[sid] = ref
+    label = f"{instruction} ({ref})" if instruction else f"Explain {ref}"
+    history = (history or []) + [{"role": "user", "content": label}]
     if not _consume_quota(request, bypass=bool(api_key)):
         yield (history + [{"role": "assistant", "content": CAPACITY_BANNER}],
                "", "")
@@ -412,7 +430,8 @@ def run_explain(ref: str, release_choice: str, history: list[dict],
         from agent.explain import explain
         with _borrowed_key(api_key):
             text, report, tagmap = explain(ref, _retriever(),
-                                           release=_rel(release_choice))
+                                           release=_rel(release_choice),
+                                           instruction=instruction)
     except IndexNotReady:
         yield history[:-1] + [{"role": "assistant", "content": INDEX_BANNER}], "", ""
         return

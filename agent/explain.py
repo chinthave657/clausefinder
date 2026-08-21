@@ -60,12 +60,16 @@ def fetch_clause(retriever: Retriever, spec: str, clause: str,
 
 
 def explain(ref: str, retriever: Retriever,
-            release: str | None = None) -> tuple[str, ValidatorReport, dict[str, dict]]:
-    """Same return shape as answer.ask(): (text, report, tagmap)."""
+            release: str | None = None,
+            instruction: str | None = None) -> tuple[str, ValidatorReport, dict[str, dict]]:
+    """Same return shape as answer.ask(): (text, report, tagmap).
+    instruction: optional follow-up directive applied to the clause text
+    (e.g. "summarize this in 2 lines" after a previous explain)."""
     parsed = parse_ref(ref)
     if not parsed:
         return (f"Could not parse a clause reference from '{ref}'. "
-                "Use the form 'TS 38.331 5.3.5.3'.",
+                "Use the form 'TS 38.331 5.3.5.3' — or ask a free-text "
+                "question in the Ask tab.",
                 ValidatorReport(checks=[], passed=False), {})
     spec, clause = parsed
     chunks = fetch_clause(retriever, spec, clause, release=release)
@@ -87,9 +91,11 @@ def explain(ref: str, retriever: Retriever,
         tok += t
     context = "\n\n---\n\n".join(parts)
 
+    task = (instruction.strip() if instruction
+            else f"Explain {spec} §{clause} in plain English")
     user = (f"Clause to explain: {spec} §{clause}\n\n"
             f"Clause text:\n{context}\n\n"
-            f"Explain {spec} §{clause} in plain English "
+            f"{task} — "
             "with inline [Ck] citations and verbatim quotes per the rules.")
 
     client, model = _client()
