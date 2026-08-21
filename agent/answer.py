@@ -44,7 +44,7 @@ NO_THINK_NVIDIA = {"chat_template_kwargs": {"thinking": False}}
 NO_THINK_OPENROUTER = {"reasoning": {"exclude": True},
                        "provider": {"order": ["Novita", "DeepInfra"],
                                     "allow_fallbacks": True}}
-MAX_TOKENS_OPENROUTER = 1600  # answer ~900 + stripped reasoning headroom
+MAX_TOKENS_OPENROUTER = 2600  # answer ~900 + stripped-reasoning headroom (big-context questions reason long)
 # App attribution on OpenRouter rankings (free discovery channel)
 OR_HEADERS = {"HTTP-Referer": "https://github.com/chinthave657/clausefinder",
               "X-Title": "3GPP ClauseFinder"}
@@ -75,7 +75,7 @@ def _chat(client, model: str, messages: list[dict], max_tokens: int = 900) -> st
     no_think = NO_THINK_OPENROUTER if onrouter else NO_THINK_NVIDIA
     if onrouter:
         max_tokens = max(max_tokens, MAX_TOKENS_OPENROUTER)
-    ladder = ((no_think, no_think, no_think) if onrouter  # bare = reasoning
+    ladder = ((no_think, no_think, {}) if onrouter  # bare last: salvageable below
               else (no_think, no_think, {}))
     for extra in ladder:
         resp = client.chat.completions.create(
@@ -84,6 +84,15 @@ def _chat(client, model: str, messages: list[dict], max_tokens: int = 900) -> st
         text = _content(resp)
         if not _degenerate(text):
             return text
+        # salvage: bare attempts often emit reasoning THEN the real cited
+        # answer — cut everything before the first citation-bearing line
+        if "[C" in text:
+            lines = text.splitlines()
+            starts = [i for i, l in enumerate(lines) if "[C" in l]
+            if starts:
+                salvaged = "\n".join(lines[starts[0]:]).strip()
+                if not _degenerate(salvaged):
+                    return salvaged
     return text
 
 # Domain rules below adapted from lugasia/3gpp-skill (MIT) — see NOTICE.
@@ -173,6 +182,13 @@ def ask(question: str, retriever: Retriever, release: str | None = None,
     answer = _chat(client, model,
                    [{"role": "system", "content": SYSTEM},
                     {"role": "user", "content": user}])
+    if _degenerate(answer):
+        # every attempt failed (provider reasoning ate the budget, or serving
+        # fault) — an honest error beats an empty bubble; sources still shown
+        return ("The model failed to produce an answer just now (a serving "
+                "issue, not a retrieval one — the sources on the right are "
+                "valid). Please press Ask again; retries usually succeed.",
+                ValidatorReport(checks=[], passed=False), tagmap)
 
     report = validate(answer, tagmap)
     if not report.passed:
