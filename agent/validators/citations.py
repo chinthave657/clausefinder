@@ -62,10 +62,17 @@ def strip_failed_quotes(answer: str, retrieved: dict[str, dict]) -> str:
     is removed — the claim keeps its clause reference, loses the fake quote."""
     def _sub(m: re.Match) -> str:
         quote = m.group(1)
-        if any(_quote_score(quote, c["text"]) >= FUZZ_THRESHOLD
-               for c in retrieved.values()):
+        scores = {t: _quote_score(quote, c["text"]) for t, c in retrieved.items()}
+        if scores and max(scores.values()) >= FUZZ_THRESHOLD:
             return m.group(0)
-        return "(see cited clause — paraphrased)"
+        # point the reader at the closest source instead of leaving a husk
+        if scores:
+            best = max(scores, key=scores.get)
+            c = retrieved[best]
+            ref = (f"{c['spec']} §{c['clause']} " if c.get("spec") and c.get("clause")
+                   else "")
+            return f"(quote omitted — see {ref}via {best})"
+        return "(quote omitted — no verbatim source)"
     return QUOTE_RE.sub(_sub, answer)
 
 

@@ -99,5 +99,6 @@ def test_strip_failed_quotes_removes_only_fabrications():
     out = strip_failed_quotes(ans, RETRIEVED)
     assert good in out
     assert bad not in out
-    assert "(see cited clause — paraphrased)" in out
-    assert out.count("[C1]") == 2  # clause references survive
+    assert "(quote omitted — see " in out   # points at the closest source
+    assert "via [C1])" in out
+    assert out.count("[C1]") >= 2  # clause references survive (marker adds one)

@@ -238,7 +238,7 @@ def _badges_html(report, answer: str) -> str:
         else:
             out.append(f'<span class="badge badge-red">{html.escape(c.tag)} '
                        f'{html.escape(c.reason or "failed")}</span>')
-    n = answer.count("(see cited clause — paraphrased)")
+    n = answer.count("(quote omitted")
     if n:
         out.append(f'<span class="badge badge-amber">{n} quote(s) replaced — '
                    'paraphrased</span>')
