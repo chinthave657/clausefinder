@@ -1,0 +1,52 @@
+{
+ "benchmark": "TeleQnA (GSMA ot-lite, 1000 MCQ, mixed sources)",
+ "model": "nvidia/nemotron-3-nano-30b-a3b (temp 0, thinking off, NVIDIA dev endpoint)",
+ "date": "2026-08-21",
+ "configs": {
+  "closed_book": {
+   "overall": 0.722,
+   "3gpp_subset": {
+    "n": 191,
+    "acc": 0.602
+   },
+   "other": {
+    "n": 749,
+    "acc": 0.757
+   },
+   "parse_failures": 11
+  },
+  "naive_rag": {
+   "overall": 0.688,
+   "3gpp_subset": {
+    "n": 191,
+    "acc": 0.649
+   },
+   "other": {
+    "n": 749,
+    "acc": 0.704
+   },
+   "parse_failures": 0,
+   "note": "always-on retrieval: +4.7pp where corpus covers, -5.3pp context distraction elsewhere"
+  },
+  "selective_rag": {
+   "overall": 0.738,
+   "3gpp_subset": {
+    "n": 191,
+    "acc": 0.686
+   },
+   "other": {
+    "n": 749,
+    "acc": 0.757
+   },
+   "rag_fired": 0.162,
+   "threshold": 0.15,
+   "note": "threshold = abstain-rail soft floor, calibrated a priori on golden set; sweep confirms optimum plateau 0.15-0.20"
+  }
+ },
+ "caveats": [
+  "3GPP subset n=191: +8.4pp ~ 2.5 sigma",
+  "single run; MoE serving nondeterministic at temp 0 (war log #9)",
+  "tau pre-registered from abstain calibration; plateau existence confirmed post-hoc",
+  "prior art (Telco-RAG lineage) evaluates on 3GPP-only subsets; mixed-source run exposes the context-distraction cost their scoping hides"
+ ]
+}

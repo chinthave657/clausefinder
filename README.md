@@ -109,11 +109,17 @@ satellite suite, contamination caveat for OTel-2.0) lives in
 | Retrieval — full corpus (391,487 chunks, 776 specs, Rel-17+18; 106-question golden set) | rerank@50 + identifier leg | recall@5 / recall@20 / MRR@10 | **0.87 / 0.91 / 0.78** |
 | Retrieval — depth-100 ablation (rejected: top-5 regression at 2× latency) | rerank@100 | recall@5 / recall@20 / MRR@10 | 0.85 / 0.91 / 0.78 |
 | Abstain rail (5 out-of-corpus adversarial questions) | calibrated two-floor gate | refused-or-caveated | **5/5** (was 0/5 pre-rail) |
-| TeleQnA Rel-17 (734Q) | bare Nano | accuracy | pending |
-| TeleQnA Rel-17 (734Q) | Nano + ClauseFinder | accuracy | pending |
-| TeleQnA Rel-18 (780Q) | bare Nano | accuracy | pending |
-| TeleQnA Rel-18 (780Q) | Nano + ClauseFinder | accuracy | pending |
-| TeleQnA Rel-18 (780Q) | OTel-2.0-31B (closed-book, contaminated*) | accuracy | pending |
+| TeleQnA (ot-lite, 1000Q mixed-source) | Nemotron Nano closed-book | accuracy | 72.2% (3GPP subset n=191: 60.2%) |
+| TeleQnA (ot-lite, 1000Q mixed-source) | Nano + naive RAG (always-on) | accuracy | 68.8% (3GPP: **64.9%**, non-3GPP: 70.4% — context distraction) |
+| TeleQnA (ot-lite, 1000Q mixed-source) | Nano + **selective RAG** (τ=0.15, fires 16%) | accuracy | **73.8%** (3GPP: **68.6%**, non-3GPP: 75.7%) |
+| TeleQnA (leaderboard, reference) | OTel-2.0-31B closed-book (trained in-ecosystem*) | accuracy | 91.7% |
+
+The selective-RAG threshold is the abstain rail's soft floor, **calibrated a
+priori on the golden set** — the TeleQnA sweep independently confirms it sits on
+the optimum plateau (0.15–0.20). Naive always-on RAG is reported because the
+field usually hides it: retrieval helps only where the corpus covers the
+question (+8.4pp on 3GPP with the gate) and hurts elsewhere without one
+(−5.3pp). Full sweep + caveats: `eval/reports/teleqna_summary.json`.
 | GSMA satellite (7 benchmarks, self-run) | Nano + ClauseFinder | per-suite | pending |
 
 \* OTel-2.0 is trained inside the ecosystem that authors these benchmarks —

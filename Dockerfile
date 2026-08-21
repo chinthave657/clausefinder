@@ -44,4 +44,8 @@ COPY pyproject.toml ./
 
 # data/ (LanceDB index + parsed corpus) is mounted as a volume — see docker-compose.yml
 EXPOSE 7860
+# non-root: contains blast radius of any dependency RCE (CSO audit finding #1)
+RUN useradd -m app && chown -R app /app
+USER app
+
 CMD ["python", "web/app.py"]
