@@ -78,7 +78,7 @@ def run(report: Path | None = None, baseline_path: Path = BASELINE_PATH) -> int:
     print(f"baseline: {baseline_path} ({baseline})")
     print(f"current:  {current}")
 
-    failures = gate(baseline, current)
+    failures = gate(baseline.get('answer', baseline), current)
     if failures:
         print("\nGATE FAILED:")
         for f in failures:

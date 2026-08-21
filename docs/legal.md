@@ -55,11 +55,7 @@ parsed chunks, and the built LanceDB index) is git-ignored
 The built LanceDB index (embeddings + chunked spec text + breadcrumbs) is a
 derived artifact of the GSMA corpus, and it *is* spec text, chunked and
 embedded — so it is **not** published as an open, anonymous-download asset.
-When a pre-built index is published for the hosted demo (HF ZeroGPU Space)
-to download at boot, it goes to a **gated Hugging Face dataset**, not a
-public one: access is behind Hugging Face's gating flow, and the dataset
-card carries the same GSMA/3GPP provenance statement as this document —
-source dataset, license posture, and a pointer back to the official specs.
+The pre-built index for the hosted demo is published as a gated Hugging Face dataset (chinthave/clausefinder-index); the raw corpus is never redistributed by this repo.
 This mirrors GSMA's own distribution model (gated/tracked, not anonymous
 open download) rather than loosening it.
 

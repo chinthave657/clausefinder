@@ -1,7 +1,7 @@
 """Ask-mode answer agent: tag-cited synthesis over retrieved clauses.
 
 Prompt structure follows the measured Telco-RAG format (+4.6pp):
-query → context → REPEATED query → instruction. Context capped ~2000 tokens.
+query → context → REPEATED query → instruction. Context capped by CONTEXT_CAP_TOKENS (~6000).
 LLM via any OpenAI-compatible endpoint (NVIDIA build endpoints for dev,
 OpenRouter for the demo). Reasoning is requested OFF for answer calls.
 """
@@ -48,6 +48,10 @@ NO_THINK_NVIDIA = {"chat_template_kwargs": {"thinking": False}}
 OR_PROVIDERS = {"order": ["Novita", "DeepInfra"], "allow_fallbacks": False}
 NO_THINK_OPENROUTER = {"reasoning": {"exclude": True}, "provider": OR_PROVIDERS}
 BARE_OPENROUTER = {"provider": OR_PROVIDERS}
+# Endpoint-aware alias for callers outside the model-chain path (diff, explain,
+# follow-up condenser) — mirrors _client()'s endpoint priority.
+NO_THINK = (NO_THINK_OPENROUTER if os.environ.get("OPENROUTER_API_KEY")
+            else NO_THINK_NVIDIA)
 MAX_TOKENS_OPENROUTER = 2600  # answer ~900 + stripped-reasoning headroom (big-context questions reason long)
 # App attribution on OpenRouter rankings (free discovery channel)
 OR_HEADERS = {"HTTP-Referer": "https://github.com/chinthave657/clausefinder",

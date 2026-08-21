@@ -9,7 +9,7 @@ Honest-reporting notes baked in:
     3GPP series, so results are reported overall AND split by source tag —
     retrieval can only help where the corpus covers the source.
   * Checkpointed per-question (JSONL append); rerun resumes. MoE serving is
-    nondeterministic at temp 0 (war log #9) — single-run numbers carry that.
+    nondeterministic at temp 0 — single-run numbers carry that.
   * Answer extraction is deterministic regex over a forced JSON format, with
     one repair retry; unparseable after retry scores wrong (counted, reported).
 """
@@ -93,7 +93,7 @@ def run(mode: str, limit: int | None, out_dir: Path) -> None:
 
     retriever = acronyms = None
     if mode == "rag":
-        from agent.tools.retrieval import Retriever, load_acronyms, enhance_query
+        from agent.tools.retrieval import Retriever, enhance_query, load_acronyms
         retriever = Retriever(Path("data/index"))
         acronyms = load_acronyms(Path("data/parsed"))
 

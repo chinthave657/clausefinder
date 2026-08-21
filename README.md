@@ -9,7 +9,7 @@ is built end-to-end on the NVIDIA agentic stack — NeMo Agent Toolkit,
 NeMo Guardrails, and Nemotron — plus the GSMA Open Telco AI ecosystem's
 corpus and domain-tuned OTel models.
 
-**Status:** early build (P0/P1 per the design doc (docs/architecture.md)) — full Rel-17+18 corpus indexed (391k chunks, 5 series); hosted demo in progress.
+**Status:** core build complete ([architecture](docs/architecture.md)) — full Rel-17+18 corpus indexed (391k chunks, 5 series); hosted demo in progress.
 
 ## Architecture
 
@@ -74,39 +74,10 @@ make ingest index               # build a local corpus + LanceDB index (one-time
 docker compose up --build       # Gradio on http://localhost:7860
 ```
 
-GPU profile (adds NIM containers, reranker on — needs an NGC key + ≥48GB
-GPU, dev-tier NIM entitlements only): `docker compose --profile gpu up`.
-See [`docs/self-hosting.md`](docs/self-hosting.md) for both profiles, sizing,
-and troubleshooting.
-
-### Local dev (uv)
-
-```bash
-uv sync
-cp .env.example .env
-make ingest index               # or point at a pre-built data/index
-uv run clausefinder ask "What is the RRC Reestablishment procedure?"
-make demo                       # Gradio locally (uv run python web/app.py)
-```
-
-## Try it live
-
-`[hosted demo — coming soon]` — HF ZeroGPU Space, launching with the full
-5-series corpus (see build plan).
-Until then, run it yourself with the Docker quickstart above.
-
-## Benchmarks
-
-Numbers are published only once measured — no placeholders dressed up as
-results. Full methodology (golden-set CI gate, TeleQnA subsets, GSMA
-satellite suite, contamination caveat for OTel-2.0) lives in
-[`docs/architecture.md`](docs/architecture.md#evaluation) and will land in
-`docs/benchmarks.md` once P4 runs.
-
-| Benchmark | Config | Metric | Result |
+GPU profile (stub — uncomment the `nim` service in docker-compose.yml; needs an NGC key and a ≥48 GB GPU; see docs/self-hosting.md) | Benchmark | Config | Metric | Result |
 |---|---|---|---|
-| Golden set (starter 9, ask mode, full 322k corpus) | Nano + ClauseFinder (rerank on) | validator-pass + gold-cited | 8/9 |
-| Retrieval — full corpus (391,487 chunks, 776 specs, Rel-17+18; 106-question golden set) | rerank@50 + identifier leg | recall@5 / recall@20 / MRR@10 | **0.87 / 0.91 / 0.78** |
+| Golden set (starter 9, ask mode, 322k-chunk index at time of run (corpus since grown to 391k; full-corpus judged rerun pending)) | Nano + ClauseFinder (rerank on) | validator-pass + gold-cited | 8/9 |
+| Retrieval — full corpus (391,487 chunks, 776 specs, Rel-17+18; 107-question golden set (112 rows incl. 5 abstain probes)) | rerank@50 + identifier leg | recall@5 / recall@20 / MRR@10 | **0.87 / 0.91 / 0.78** |
 | Retrieval — depth-100 ablation (rejected: top-5 regression at 2× latency) | rerank@100 | recall@5 / recall@20 / MRR@10 | 0.85 / 0.91 / 0.78 |
 | Abstain rail (5 out-of-corpus adversarial questions) | calibrated two-floor gate | refused-or-caveated | **5/5** (was 0/5 pre-rail) |
 | TeleQnA (ot-lite, 1000Q mixed-source) | Nemotron Nano closed-book | accuracy | 72.2% (3GPP subset n=191: 60.2%) |
@@ -120,7 +91,7 @@ the optimum plateau (0.15–0.20). Naive always-on RAG is reported because the
 field usually hides it: retrieval helps only where the corpus covers the
 question (+8.4pp on 3GPP with the gate) and hurts elsewhere without one
 (−5.3pp). Full sweep + caveats: `eval/reports/teleqna_summary.json`.
-| GSMA satellite (7 benchmarks, self-run) | Nano + ClauseFinder | per-suite | pending |
+GSMA satellite suite (7 benchmarks, self-run): pending.
 
 \* OTel-2.0 is trained inside the ecosystem that authors these benchmarks —
 reported open-book (ours, retrieval-grounded) vs closed-book (OTel-2.0,
@@ -143,7 +114,9 @@ dodge.
 - **NeMo Agent Toolkit (NAT)** — the router/retrieval/answer/diff workflow
   runs as a NAT workflow (Python API in-process; YAML config for the router
   variant kept for eval).
-- **Nemotron** — Nano-30B-A3B answers (reasoning off, low latency/cost);
+- **Nemotron** — model fallback chain via `CLAUSEFINDER_MODEL_CHAIN` (the
+  hosted demo leads with Lightning-3.5; Nano-30B-A3B is the guaranteed
+  fallback and in-repo default). Nano answers (reasoning off, low latency/cost);
   Super-120B synthesizes release diffs (reasoning on, over a deterministic
   diff rendered first).
 - **NeMo Guardrails** — input rails (topic scoping, prompt-injection —
@@ -175,7 +148,7 @@ We benchmark both rather than assume an answer. v1 is retrieval-augmented
 generation over the base Nemotron models, with a citation validator that
 makes every claim checkable against the source clause — that's the part
 fine-tuning alone doesn't give you. A QLoRA fine-tune on telecom data is
-planned as **P5** (see the build plan), evaluated against bare Nano,
+planned as a follow-up, evaluated against bare Nano,
 Nano+RAG, and OTel-2.0 on the same suite so the comparison is apples-to-apples,
 not a marketing number.
 

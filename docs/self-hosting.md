@@ -14,9 +14,9 @@ on a 16GB laptop.
     `:free`-suffixed model variants exist for zero-cost dev loops.
 - Docker + Docker Compose, **or** Python 3.12 + [uv](https://docs.astral.sh/uv/)
   if you'd rather run without containers.
-- A built LanceDB index under `data/index`. There is no hosted index to
-  download yet — you build it locally from the public GSMA/3GPP corpus (see
-  below). This step downloads specs and computes embeddings; expect it to
+- A built LanceDB index under `data/index`. A prebuilt index exists as a gated HF dataset (it feeds the hosted
+  demo); access is gated, so building locally from the public GSMA/3GPP
+  corpus (see below) is the supported self-host path. This step downloads specs and computes embeddings; expect it to
   take a while on CPU.
 
 Nothing here requires a GPU. The `gpu` profile (below) is optional and adds
@@ -41,9 +41,9 @@ The app is served at `http://localhost:7860` (Gradio). LLM calls (answer
 synthesis, diff synthesis) go out to build.nvidia.com or OpenRouter with
 your key — nothing is cached or proxied through a third party. Only the
 568M-parameter embedding model runs locally, on CPU, for query embedding at
-request time; the reranker falls back from OTel-Reranker-0.6B to a Nano
-listwise rerank on this profile since there's no GPU to run the 0.6B model
-on.
+request time; reranking is disabled by default on this profile (it adds ~5–30 s per
+query on CPU); enable it with `CLAUSEFINDER_RERANK=1`, which runs
+OTel-Reranker-0.6B on whatever device is available (cuda/mps/cpu).
 
 `docker-compose.yml` mounts `./data` into the container — the index you
 build on the host (or inside the container, same commands) is what the app
@@ -113,3 +113,14 @@ uv run python web/app.py                            # Gradio, same as the contai
 - **Rate limits on build.nvidia.com** — the free member tier is capped
   (~40 RPM); switch to an OpenRouter key, or a `:free`-suffixed model
   variant for dev loops, if you're iterating quickly.
+
+## Configuration reference
+
+| Env var | Default | Effect |
+|---|---|---|
+| `CLAUSEFINDER_RERANK` | off | `1` enables OTel-Reranker-0.6B (better precision; +5–30 s/query on CPU) |
+| `CLAUSEFINDER_MODEL` | Nemotron Nano-30B-A3B | Answer/explain model |
+| `CLAUSEFINDER_MODEL_CHAIN` | unset | Comma-separated fallback chain, primary first (the hosted demo uses `nemotron-3.5-lightning,nemotron-3-nano-30b-a3b`) |
+| `CLAUSEFINDER_DIFF_MODEL` | Nemotron Super-120B | Diff synthesis model |
+| `DEMO_DAILY_LIMIT` | 10 | Per-session daily query cap in the web app |
+

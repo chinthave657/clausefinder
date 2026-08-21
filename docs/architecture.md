@@ -61,7 +61,10 @@ folklore:
 
 Before retrieval, `enhance_query` (`agent/tools/retrieval.py`) appends
 acronym expansions drawn from TR 21.905 vocabulary and per-spec §3
-definitions to the query — it never rewrites or replaces the original text.
+definitions to the query, plus hand-curated `TERM_ALIASES` — industry-term →
+spec-terminology pointers (e.g. "AI-RAN" → "AI/ML for NG-RAN"), explicitly
+labeled related-terminology hints, not equivalences — and it never rewrites
+or replaces the original text.
 Telco-RAG measured this lexicon step alone worth +6pp (84.8→90.8) on 3GPP
 QA. Appending rather than substituting matters: the original wording still
 drives the BM25 leg (exact spec terminology often *is* the query), while the
@@ -70,10 +73,14 @@ plain English instead of 3GPP jargon.
 
 ## Hybrid retrieval: BM25 ⊕ vector, weighted RRF, no HNSW
 
-Two independent searches run over the same LanceDB table: tantivy BM25 (FTS)
-and OTel-Embedding-568M vector search, each to depth 100 (`CAND_DEPTH`). They
-fuse via **weighted** reciprocal-rank fusion — vector at 0.7, BM25 at 0.3
-(`VEC_W` / `FTS_W` in `retrieval.py`) — rather than the naive unweighted RRF
+Three legs run over the same LanceDB table: tantivy BM25 (FTS) and
+OTel-Embedding-568M vector search, each to depth 100 (`CAND_DEPTH`), plus an
+**identifier leg** — spec identifiers regex-extracted from the query (T304,
+SIB1, 5QI, Msg3…) searched as exact FTS tokens — added after 69k recovered
+chunks buried identifier-titled clauses under generic term mass. They fuse
+via **weighted** reciprocal-rank fusion — vector 0.7, BM25 0.3, identifiers
+0.6 (`VEC_W` / `FTS_W` / `ID_W` in `retrieval.py`) — rather than the naive
+unweighted RRF
 most hybrid-search writeups use.
 
 The weighting exists because unweighted RRF systematically favors *dual
@@ -107,8 +114,9 @@ here, both evidence-driven rather than default-library behavior:
 
 - **Rerank** (OTel-Reranker-0.6B, MRR@10 0.944) runs on the fused top-50,
   narrowing to the top 5–8 chunks that actually reach generation. On the
-  self-host CPU profile without a GPU, this step falls back to a Nano
-  listwise rerank instead of running the 0.6B model on CPU.
+  self-host CPU profile reranking is off by default (`CLAUSEFINDER_RERANK=1`
+  enables the 0.6B cross-encoder on any device); when off, the fused order
+  is used as-is.
 - **Parent expansion** deduplicates by `parent_id` and returns one hit per
   clause unit — the full parent text (≤1200 tokens), not just the winning
   child fragment. This is the small-to-big pattern completing: retrieval
@@ -120,9 +128,11 @@ here, both evidence-driven rather than default-library behavior:
   body) from the top-3 results. This captures most of the multi-hop value a
   graph-RAG approach would provide, at a fraction of the engineering cost —
   see "explicitly rejected" below.
-- **Abstain check:** if the top fused score falls below a calibrated
-  threshold, the answer agent is told to report "no supporting clause found"
-  rather than search-and-hope. A wrong answer with confident-looking
+- **Abstain check:** keyed on the top OTel-Reranker-0.6B score, calibrated
+  on the golden set (abstain ≤0.110 vs answerable ≥0.119). Below 0.05 the
+  system refuses outright and names the specs searched; between 0.05 and
+  0.15 it answers under an explicit weak-match caveat rather than
+  search-and-hope. A wrong answer with confident-looking
   citations is worse than an honest abstain.
 
 ## Answer generation: prompt structure, not just prompt content
@@ -193,8 +203,8 @@ any output rail and is never skippable by prompt or config.
 
 Three independent measurement layers, each gating a different thing:
 
-1. **Golden set** (100 stratified Q&A items, ~20/series, ≥20/mode, ≥10
-   adversarial including 5–10 out-of-corpus abstain cases) — CI gate is
+1. **Golden set** (112 stratified items — 107 scored + 5 out-of-corpus
+   abstain probes, ~20/series, critic-audited against corpus text) — CI gate is
    **paired per-item regression** (any previously-passing item flipping to
    failing blocks the change), not an aggregate score threshold. At n=100
    the aggregate Wilson 95% CI is ±4–5pp, wide enough that an aggregate gate
@@ -208,16 +218,19 @@ Three independent measurement layers, each gating a different thing:
    every change; an offline ALCE-style entailment check runs non-gating on
    paraphrase-path citations specifically, since that's the fallback path
    where an unfaithful citation could accumulate undetected.
-4. **Public comparability** — TeleQnA Rel-17 (734Q) and Rel-18 (780Q) 3GPP
-   subsets, the split every prior 3GPP-RAG system reports results on, run
-   for three configs: bare Nano, Nano+ClauseFinder, and OTel-2.0-31B
-   (pinned, with the contamination caveat stated verbatim wherever the
-   number appears — see the README).
+4. **Public comparability** — the GSMA ot-lite TeleQnA set (1,000 MCQs,
+   mixed sources; 3GPP-tagged subset n=191), run for three configs:
+   closed-book Nano, naive always-on RAG, and selective RAG gated on the
+   calibrated reranker score. OTel-2.0-31B's leaderboard number is cited as
+   a reference with the contamination caveat stated wherever it appears
+   (see the README).
 5. **GSMA satellite suite** — all 7 official benchmarks run locally (not
    submitted to the leaderboard, which accepts models only, not RAG
    configs) via an Inspect ModelAPI wrapper; results published with suite
    version and dataset revision hashes pinned so they're reproducible.
 
-None of these have run against the full corpus yet — see the benchmark
-table in the README for what's pending and why no numbers are fabricated in
-the meantime.
+The golden-set retrieval baseline (eval/baseline.json) and the TeleQnA
+three-config comparison (eval/reports/teleqna_summary.json) have run against
+the full 391k-chunk corpus — the README benchmark table carries the numbers.
+Remaining pending runs (satellite suite, full judged answer eval) are marked
+pending there rather than estimated.

@@ -1,7 +1,7 @@
 """ClauseFinder — Gradio app for HF Spaces (ZeroGPU) and local CPU.
 
 Three tabs = router modes (design §2, rule-first: the UI tab IS the mode):
-  Ask     — hybrid retrieval + Nano synthesis with citation validator
+  Ask     — hybrid retrieval + Nemotron synthesis (CLAUSEFINDER_MODEL_CHAIN) with citation validator
   Diff    — release diff (deterministic clause diff + Super-120B synthesis)
   Explain — one clause fetched by metadata (no vector search) + Nano explain
 
@@ -167,9 +167,9 @@ _ENV_LOCK = threading.Lock()
 
 @contextlib.contextmanager
 def _borrowed_key(api_key: str | None):
-    """explain()/diff_releases() don't take an api_key param (out of this
-    workstream's file scope — only agent/answer.py was touched); borrow the
-    process env var for the duration of the call instead. Serializes
+    """explain()/diff_releases() read OPENROUTER_API_KEY from the environment
+    rather than taking a per-call key; borrow the env var for the duration
+    of the call instead. Serializes
     concurrent BYO-key requests, which is fine at the demo's queue
     concurrency (2-3)."""
     if not api_key:
@@ -267,6 +267,7 @@ def _gpu_retrieve(question: str, release: str | None):
     ZeroGPU window; LLM synthesis (network-bound) runs outside it so a slow
     API call can never abort the GPU task."""
     import torch
+
     from agent.tools.retrieval import enhance_query
     r = _retriever()
     if torch.cuda.is_available():
@@ -277,6 +278,7 @@ def _gpu_retrieve(question: str, release: str | None):
 @GPU(duration=40)  # two releases x clause-set retrieval + device hop
 def _gpu_diff_resolve(question: str, release_a: str, release_b: str):
     import torch
+
     from agent.diff import resolve_clause_sets
     r = _retriever()
     if torch.cuda.is_available():

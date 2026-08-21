@@ -11,6 +11,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
       - run: uv sync --frozen
+      - run: uv run ruff check .
       - run: uv run pytest tests/ -q
       # Full eval gates (retrieval + ask) need the index + API keys and run
       # locally: `uv run python -m eval.retrieval_eval`, eval/ci_gate.py.

@@ -2,8 +2,8 @@
 
 Checks, in order of strength:
   a. every cited [Ck] tag exists in the retrieved set (exact)
-  b. every quoted span fuzzy-matches (>=0.95) within THAT chunk only
-  c. every {spec, clause} pair the answer names exists in the index manifest
+  b. every quoted span fuzzy-matches (>=0.95) within that chunk, with
+     re-anchoring to another retrieved chunk when the attribution was off
 """
 from __future__ import annotations
 
