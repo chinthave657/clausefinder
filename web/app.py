@@ -112,6 +112,16 @@ def _retriever():
     return _RETRIEVER
 
 
+if os.environ.get("SPACE_ID"):  # HF Space: pre-load weights on CPU at boot
+    try:
+        _r = _retriever()
+        _r._rerank_hits("warmup", [{"breadcrumb": "w", "text": "w", "id": "w",
+                                    "parent_id": "w"}])
+        print("models warm (CPU)", flush=True)
+    except Exception as _e:
+        print("warmup skipped:", _e, flush=True)
+
+
 INDEX_BANNER = (
     "**The clause index is still building.** This demo needs a LanceDB "
     "index at `data/index/` (a larger ingest may be running elsewhere). "
@@ -250,21 +260,28 @@ def _stream(history: list[dict], text: str):
 
 # --------------------------------------------------------------------- ask
 
-@GPU(duration=15)  # embed+rerank ≈ 2-4s on the H200 slice; 90s default was
-                    # draining visitor ZeroGPU quota 20x faster than needed
+@GPU(duration=25)  # device-hop + embed + rerank; cold model load happens at
+                    # boot on CPU, not inside the window (was aborting at 15s)
 def _gpu_retrieve(question: str, release: str | None):
     """Only this needs CUDA (query embed + rerank, ~1-2s). Runs inside the
     ZeroGPU window; LLM synthesis (network-bound) runs outside it so a slow
     API call can never abort the GPU task."""
+    import torch
     from agent.tools.retrieval import enhance_query
     r = _retriever()
+    if torch.cuda.is_available():
+        r.to_device("cuda")
     return r.search(enhance_query(question, _ACRONYMS), release=release)
 
 
-@GPU(duration=30)  # two releases x clause-set retrieval
+@GPU(duration=40)  # two releases x clause-set retrieval + device hop
 def _gpu_diff_resolve(question: str, release_a: str, release_b: str):
+    import torch
     from agent.diff import resolve_clause_sets
-    return resolve_clause_sets(question, (release_a, release_b), _retriever(), _ACRONYMS)
+    r = _retriever()
+    if torch.cuda.is_available():
+        r.to_device("cuda")
+    return resolve_clause_sets(question, (release_a, release_b), r, _ACRONYMS)
 
 
 def _ask_pipeline(question: str, release: str | None, api_key: str | None):

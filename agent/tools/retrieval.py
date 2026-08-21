@@ -79,6 +79,17 @@ class Retriever:
                        else os.environ.get("CLAUSEFINDER_RERANK", "0") == "1")
         self._reranker = None
 
+    def to_device(self, device: str) -> None:
+        """Move embedder (+reranker if loaded) — ZeroGPU pattern: weights load
+        on CPU at boot; each GPU window hops them to cuda (seconds, not the
+        30-60s cold load that blew the declared duration)."""
+        if getattr(self, "_device", None) == device:
+            return
+        self.model.to(device)
+        if self._reranker is not None:
+            self._reranker.model.to(device)
+        self._device = device
+
     def _rerank_hits(self, query: str, hits: list[dict]) -> list[dict]:
         if self._reranker is None:
             import torch
