@@ -76,7 +76,7 @@ docker compose up --build       # Gradio on http://localhost:7860
 
 GPU profile (stub — uncomment the `nim` service in docker-compose.yml; needs an NGC key and a ≥48 GB GPU; see docs/self-hosting.md) | Benchmark | Config | Metric | Result |
 |---|---|---|---|
-| Golden set (starter 9, ask mode, 322k-chunk index at time of run (corpus since grown to 391k; full-corpus judged rerun pending)) | Nano + ClauseFinder (rerank on) | validator-pass + gold-cited | 8/9 |
+| Golden-set answers (111 questions, full 391k corpus) | Nano + ClauseFinder | validator pass / required-clause cited | **90.1% / 97.3%** (content-quality judging pending) |
 | Retrieval — full corpus (391,487 chunks, 776 specs, Rel-17+18; 107-question golden set (112 rows incl. 5 abstain probes)) | rerank@50 + identifier leg | recall@5 / recall@20 / MRR@10 | **0.87 / 0.91 / 0.78** |
 | Retrieval — depth-100 ablation (rejected: top-5 regression at 2× latency) | rerank@100 | recall@5 / recall@20 / MRR@10 | 0.85 / 0.91 / 0.78 |
 | Abstain rail (5 out-of-corpus adversarial questions) | calibrated two-floor gate | refused-or-caveated | **5/5** (was 0/5 pre-rail) |

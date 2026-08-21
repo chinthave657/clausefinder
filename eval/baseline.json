@@ -42,11 +42,15 @@
   "calibration": "abstain<=0.110 vs answerable>=0.119 top rerank score"
  },
  "answer": {
-  "validator_pass_rate": 1.0,
-  "gold_cited_rate": 0.8888888888888888,
-  "n": 9,
-  "set_from_timestamp": "2026-08-20T03:14:38.573990+00:00",
-  "set_at": "2026-08-20T03:14:38.574745+00:00",
-  "note": "n=9 starter set; full 106-question judged run is a pre-launch item"
+  "n": 111,
+  "validator_pass_rate": 0.901,
+  "gold_cited_rate": 0.973,
+  "metric_note": "citation-coverage eval: validator (deterministic) + required-gold-clause-cited. NO LLM content judging ran \u2014 golden set has no gold_answer_points; content-quality judging is a documented pending item, not a claimed result.",
+  "known_misses": [
+   "s23-15",
+   "s24-17",
+   "s33-04"
+  ],
+  "date": "2026-08-21"
  }
 }
