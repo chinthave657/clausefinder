@@ -9,7 +9,7 @@ python_version: "3.11"
 app_file: web/app.py
 startup_duration_timeout: 30m
 license: apache-2.0
-short_description: Clause-cited 3GPP answers, diffs, and plain-English clause explanations
+short_description: Clause-cited 3GPP answers, diffs, explanations
 tags:
   - telecom
   - 3gpp
