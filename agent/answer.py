@@ -35,7 +35,19 @@ WEAK_MATCH_CAVEAT = (
     "technology/release context before relying on this answer.\n\n")
 
 # Nemotron-3 is reasoning-default; ask/router run with thinking off (design §2).
-NO_THINK = {"chat_template_kwargs": {"thinking": False}}
+# Endpoint-specific knobs (verified 2026-08-21): NVIDIA honors
+# chat_template_kwargs; OpenRouter providers vary wildly, so we pin providers
+# with clean reasoning-channel behavior, strip via reasoning.exclude, and give
+# headroom for billed-but-stripped reasoning tokens. /no_think in SYSTEM covers
+# providers that respect in-band directives. _chat's degenerate-retry backstops.
+NO_THINK_NVIDIA = {"chat_template_kwargs": {"thinking": False}}
+NO_THINK_OPENROUTER = {"reasoning": {"exclude": True},
+                       "provider": {"order": ["Novita", "DeepInfra"],
+                                    "allow_fallbacks": True}}
+MAX_TOKENS_OPENROUTER = 1600  # answer ~900 + stripped reasoning headroom
+# App attribution on OpenRouter rankings (free discovery channel)
+OR_HEADERS = {"HTTP-Referer": "https://github.com/chinthave657/clausefinder",
+              "X-Title": "3GPP ClauseFinder"}
 _THINK_RE = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
 
 
@@ -44,14 +56,28 @@ def _content(resp) -> str:
     return _THINK_RE.sub("", resp.choices[0].message.content or "").strip()
 
 
+_REASONING_TELLS = ("We need to", "The user asks", "The user wants", "Let me ",
+                    "I should ", "First, I", "Okay, the user")
+
+
 def _degenerate(text: str) -> bool:
-    return "<unk>" in text or len(text) < 40
+    """Empty/<unk> output, or reasoning leaked into the content channel
+    (provider ignored every suppression knob) — all retryable."""
+    return ("<unk>" in text or len(text) < 40
+            or text.lstrip().startswith(_REASONING_TELLS))
 
 
 def _chat(client, model: str, messages: list[dict], max_tokens: int = 900) -> str:
-    """One completion; on degenerate output (<unk> runs — intermittent serving
-    bug under long context) retry once, then once more without NO_THINK."""
-    for extra in (NO_THINK, NO_THINK, {}):
+    """One completion; degenerate-output guard (empty/short/<unk> — reasoning
+    swallowing the budget, or the NVIDIA long-context serving bug) retries
+    twice with the endpoint's no-think config, then once bare."""
+    onrouter = "openrouter" in str(client.base_url)
+    no_think = NO_THINK_OPENROUTER if onrouter else NO_THINK_NVIDIA
+    if onrouter:
+        max_tokens = max(max_tokens, MAX_TOKENS_OPENROUTER)
+    ladder = ((no_think, no_think, no_think) if onrouter  # bare = reasoning
+              else (no_think, no_think, {}))
+    for extra in ladder:
         resp = client.chat.completions.create(
             model=model, messages=messages,
             temperature=0.0, max_tokens=max_tokens, extra_body=extra)
@@ -61,7 +87,8 @@ def _chat(client, model: str, messages: list[dict], max_tokens: int = 900) -> st
     return text
 
 # Domain rules below adapted from lugasia/3gpp-skill (MIT) — see NOTICE.
-SYSTEM = """You are ClauseFinder, a 3GPP standards assistant for telecom engineers.
+SYSTEM = """/no_think
+You are ClauseFinder, a 3GPP standards assistant for telecom engineers.
 Rules:
 - Answer ONLY from the provided clause excerpts. If they don't contain the answer, say so and name the specs you searched.
 - Cite every factual claim inline with its chunk tag, e.g. [C2]. Include one short verbatim quote (<= 1 paragraph, in double quotes) per key claim, anchored to its tag.
@@ -76,15 +103,19 @@ def _client(api_key: str | None = None) -> tuple[OpenAI, str]:
     """api_key: optional per-request BYO OpenRouter key (web demo session
     state) — overrides env vars for just this call, never persisted."""
     if api_key:
-        return (OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key),
+        return (OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key,
+                       default_headers=OR_HEADERS),
                 os.environ.get("CLAUSEFINDER_MODEL", "nvidia/nemotron-3-nano-30b-a3b:free"))
-    if os.environ.get("OPENROUTER_API_KEY"):
-        return (OpenAI(base_url="https://openrouter.ai/api/v1",
-                       api_key=os.environ["OPENROUTER_API_KEY"]),
-                os.environ.get("CLAUSEFINDER_MODEL", "nvidia/nemotron-3-nano-30b-a3b:free"))
+    # NVIDIA first: dev machines carry both keys and evals must spend the
+    # dev/eval credit lane; the demo Space carries only OPENROUTER_API_KEY.
     if os.environ.get("NVIDIA_API_KEY"):
         return (OpenAI(base_url="https://integrate.api.nvidia.com/v1",
                        api_key=os.environ["NVIDIA_API_KEY"]),
+                os.environ.get("CLAUSEFINDER_MODEL", "nvidia/nemotron-3-nano-30b-a3b"))
+    if os.environ.get("OPENROUTER_API_KEY"):
+        return (OpenAI(base_url="https://openrouter.ai/api/v1",
+                       api_key=os.environ["OPENROUTER_API_KEY"],
+                       default_headers=OR_HEADERS),
                 os.environ.get("CLAUSEFINDER_MODEL", "nvidia/nemotron-3-nano-30b-a3b"))
     raise SystemExit("set OPENROUTER_API_KEY or NVIDIA_API_KEY")
 

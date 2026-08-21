@@ -448,7 +448,7 @@ def build_demo() -> gr.Blocks:
     default_rel = "Rel-18" if "Rel-18" in rel_choices else rel_choices[0]
 
     with gr.Blocks(title="ClauseFinder") as demo:
-        gr.Markdown("# ClauseFinder\nClause-cited 3GPP answers and release "
+        gr.Markdown("# 3GPP ClauseFinder\nClause-cited 3GPP answers and release "
                     "diffs on the NVIDIA agentic stack.")
 
         api_key_state = gr.State("")

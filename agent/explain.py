@@ -23,7 +23,8 @@ REF_RE = re.compile(
 MAX_CHUNKS = 12          # a clause unit is rarely bigger; keeps context ~3k tok
 CAP_TOKENS = 6000
 
-SYSTEM = """You are ClauseFinder, a 3GPP standards assistant for telecom engineers.
+SYSTEM = """/no_think
+You are ClauseFinder, a 3GPP standards assistant for telecom engineers.
 You will be given the full text of ONE spec clause, split into tagged excerpts.
 Rules:
 - Explain what this clause specifies in plain English for an engineer who has not read it.

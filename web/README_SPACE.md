@@ -1,5 +1,5 @@
 ---
-title: ClauseFinder
+title: 3GPP ClauseFinder
 emoji: 📡
 colorFrom: green
 colorTo: gray
