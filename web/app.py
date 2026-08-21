@@ -286,9 +286,42 @@ def _gpu_diff_resolve(question: str, release_a: str, release_b: str):
     return resolve_clause_sets(question, (release_a, release_b), r, _ACRONYMS)
 
 
+def _zerogpu_broken(e: Exception) -> bool:
+    """ZeroGPU-side failures worth a CPU fallback: worker came up with no
+    CUDA device (platform bug) or the visitor's GPU quota is exhausted."""
+    t = str(e)
+    return ("No CUDA GPUs" in t or "ZeroGPU quota" in t
+            or "GPU task aborted" in t)
+
+
+def _cpu_fallback(fn, *args):
+    """Re-run a retrieval step on CPU with the reranker off (50 cross-encoder
+    pairs on 2 vCPU would take minutes; fused order is the honest degraded
+    mode). Answers stay cited; the abstain gate is inactive without rerank
+    scores, which the weak-match caveat partially covers."""
+    r = _retriever()
+    prev = getattr(r, "rerank", None)
+    try:
+        if prev is not None:
+            r.rerank = False
+        return fn(*args)
+    finally:
+        if prev is not None:
+            r.rerank = prev
+
+
 def _ask_pipeline(question: str, release: str | None, api_key: str | None):
     from agent.answer import ask
-    hits = _gpu_retrieve(question, release)
+    from agent.tools.retrieval import enhance_query
+    try:
+        hits = _gpu_retrieve(question, release)
+    except Exception as e:
+        if not _zerogpu_broken(e):
+            raise
+        print(f"ZeroGPU unavailable ({str(e)[:80]}) — CPU fallback", flush=True)
+        hits = _cpu_fallback(
+            lambda: _retriever().search(enhance_query(question, _ACRONYMS),
+                                        release=release))
     return ask(question, _retriever(), release=release, acronyms=_ACRONYMS,
                api_key=api_key or None, hits=hits)
 
@@ -411,7 +444,16 @@ def run_diff(question: str, rel_a: str, rel_b: str, history: list[dict],
     yield history, "", ""
     from agent import diff as diff_mod
     try:
-        sides = _gpu_diff_resolve(question, rel_a, rel_b)   # GPU window: retrieval only
+        try:
+            sides = _gpu_diff_resolve(question, rel_a, rel_b)   # GPU window: retrieval only
+        except Exception as e:
+            if not _zerogpu_broken(e):
+                raise
+            print(f"ZeroGPU unavailable ({str(e)[:80]}) — CPU fallback (diff)", flush=True)
+            from agent.diff import resolve_clause_sets
+            sides = _cpu_fallback(
+                lambda: resolve_clause_sets(question, (rel_a, rel_b),
+                                            _retriever(), _ACRONYMS))
         with _borrowed_key(api_key):                        # synthesis: network-bound, no GPU
             result = diff_mod.diff_releases(question, _retriever(), rel_a, rel_b,
                                             acronyms=_ACRONYMS, sides=sides)
