@@ -82,11 +82,17 @@ def _chat(client, model: str, messages: list[dict], max_tokens: int = 4096) -> s
     """Reasoning ON (the one thinking-on call in the system — design §2):
     no NO_THINK on the first two attempts. Degenerate-output retry mirrors
     answer.py; the last-resort attempt flips thinking off."""
+    # last rung drops the provider pin NO_THINK may carry — the pinned
+    # providers serve the answer models, not necessarily Super-120B
+    last = {k: v for k, v in NO_THINK.items() if k != "provider"} or NO_THINK
     text = ""
-    for extra in ({}, {}, NO_THINK):
-        resp = client.chat.completions.create(
-            model=model, messages=messages,
-            temperature=0.0, max_tokens=max_tokens, extra_body=extra)
+    for extra in ({}, {}, last):
+        try:
+            resp = client.chat.completions.create(
+                model=model, messages=messages,
+                temperature=0.0, max_tokens=max_tokens, extra_body=extra)
+        except Exception:  # provider unavailable for this model — next rung
+            continue
         text = _content(resp)
         if not _degenerate(text):
             return text

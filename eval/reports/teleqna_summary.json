@@ -40,12 +40,12 @@
    },
    "rag_fired": 0.162,
    "threshold": 0.15,
-   "note": "threshold = abstain-rail soft floor, calibrated a priori on golden set; sweep confirms optimum plateau 0.15-0.20"
+   "note": "threshold = abstain-rail soft floor, calibrated a priori on golden set; sweep confirms optimum plateau 0.15-0.20 Bucket labels: 3gpp_subset=rows tagged 3GPP (n=191); other=rows tagged OTHER (n=749); IEEE (n=56) and ETSI (n=4) reported by the harness but excluded from these two headline buckets. Reproduce: eval/teleqna_eval.py closed|rag|scores then selective."
   }
  },
  "caveats": [
   "3GPP subset n=191: +8.4pp ~ 2.5 sigma",
-  "single run; MoE serving nondeterministic at temp 0 (war log #9)",
+  "single run; MoE serving nondeterministic at temp 0 ",
   "tau pre-registered from abstain calibration; plateau existence confirmed post-hoc",
   "prior art (Telco-RAG lineage) evaluates on 3GPP-only subsets; mixed-source run exposes the context-distraction cost their scoping hides"
  ]

@@ -4,7 +4,7 @@ name: Eval
 # gitignored), so this cannot run on ordinary CI — it is manual-dispatch
 # only, for a runner that has built or downloaded an index first, plus
 # NVIDIA_API_KEY for answer/judge calls. The everyday gate is ci.yml
-# (lint + 87 unit tests); this workflow is the deep gate (design §6).
+# (lint + unit tests); this workflow is the deep gate (design §6).
 
 on:
   workflow_dispatch:

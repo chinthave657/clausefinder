@@ -83,7 +83,10 @@ def _bootstrap_index() -> None:
     print(f"index bootstrap done: {n} files, {sz / 1e9:.2f} GB", flush=True)
 
 
-_bootstrap_index()
+try:
+    _bootstrap_index()
+except Exception as _e:  # transient hub failure: degrade to the index banner
+    print(f"index bootstrap failed (will show banner): {_e}", flush=True)
 REPO_URL = "https://github.com/chinthave657/clausefinder"
 
 _RETRIEVER = None
@@ -177,6 +180,7 @@ def _borrowed_key(api_key: str | None):
         return
     with _ENV_LOCK:
         prev = os.environ.get("OPENROUTER_API_KEY")
+        prev_nv = os.environ.pop("NVIDIA_API_KEY", None)  # BYO key must win
         os.environ["OPENROUTER_API_KEY"] = api_key
         try:
             yield
@@ -185,6 +189,8 @@ def _borrowed_key(api_key: str | None):
                 os.environ.pop("OPENROUTER_API_KEY", None)
             else:
                 os.environ["OPENROUTER_API_KEY"] = prev
+            if prev_nv is not None:
+                os.environ["NVIDIA_API_KEY"] = prev_nv
 
 
 def _releases() -> list[str]:
@@ -370,12 +376,14 @@ def run_ask(question: str, release_choice: str, history: list[dict],
         return
     raw_history = list(history or [])
     history = raw_history + [{"role": "user", "content": question}]
-    if raw_history:
-        question = _standalone_question(question, raw_history, api_key or None)
+    # quota BEFORE the condense call — it's a server-billed LLM call and must
+    # not be reachable by quota-exhausted sessions
     if not _consume_quota(request, bypass=bool(api_key)):
         yield (history + [{"role": "assistant", "content": CAPACITY_BANNER}],
                "", "")
         return
+    if raw_history:
+        question = _standalone_question(question, raw_history, api_key or None)
     history = history + [{"role": "assistant", "content": "_Retrieving clauses…_"}]
     yield history, "", ""
     try:
@@ -417,6 +425,8 @@ def run_explain(ref: str, release_choice: str, history: list[dict],
             instruction, ref = ref, prev
     else:
         with _LAST_EXPLAINED_LOCK:
+            if len(_LAST_EXPLAINED) > 10000:   # unbounded-growth cap
+                _LAST_EXPLAINED.clear()
             _LAST_EXPLAINED[sid] = ref
     label = f"{instruction} ({ref})" if instruction else f"Explain {ref}"
     history = (history or []) + [{"role": "user", "content": label}]

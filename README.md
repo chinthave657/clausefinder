@@ -74,15 +74,36 @@ make ingest index               # build a local corpus + LanceDB index (one-time
 docker compose up --build       # Gradio on http://localhost:7860
 ```
 
-GPU profile (stub — uncomment the `nim` service in docker-compose.yml; needs an NGC key and a ≥48 GB GPU; see docs/self-hosting.md) | Benchmark | Config | Metric | Result |
+GPU profile (stub — uncomment the `nim` service in docker-compose.yml; needs
+an NGC key + a ≥48 GB GPU): see [`docs/self-hosting.md`](docs/self-hosting.md)
+for both profiles, sizing, and troubleshooting.
+
+### Local dev (uv)
+
+```bash
+uv sync
+cp .env.example .env
+make ingest index               # or point at a pre-built data/index
+uv run clausefinder ask "What is the RRC Reestablishment procedure?"
+make demo                       # Gradio locally (uv run python web/app.py)
+```
+
+## Try it live
+
+`[hosted demo — coming soon]` — HF ZeroGPU Space with the full 5-series corpus.
+Until then, run it yourself with the Docker quickstart above.
+
+## Benchmarks
+
+| Benchmark | Config | Metric | Result |
 |---|---|---|---|
 | Golden-set answers (111 questions, full 391k corpus) | Nano + ClauseFinder | validator pass / required-clause cited | **90.1% / 97.3%** (content-quality judging pending) |
 | Retrieval — full corpus (391,487 chunks, 776 specs, Rel-17+18; 107-question golden set (112 rows incl. 5 abstain probes)) | rerank@50 + identifier leg | recall@5 / recall@20 / MRR@10 | **0.87 / 0.91 / 0.78** |
 | Retrieval — depth-100 ablation (rejected: top-5 regression at 2× latency) | rerank@100 | recall@5 / recall@20 / MRR@10 | 0.85 / 0.91 / 0.78 |
 | Abstain rail (5 out-of-corpus adversarial questions) | calibrated two-floor gate | refused-or-caveated | **5/5** (was 0/5 pre-rail) |
 | TeleQnA (ot-lite, 1000Q mixed-source) | Nemotron Nano closed-book | accuracy | 72.2% (3GPP subset n=191: 60.2%) |
-| TeleQnA (ot-lite, 1000Q mixed-source) | Nano + naive RAG (always-on) | accuracy | 68.8% (3GPP: **64.9%**, non-3GPP: 70.4% — context distraction) |
-| TeleQnA (ot-lite, 1000Q mixed-source) | Nano + **selective RAG** (τ=0.15, fires 16%) | accuracy | **73.8%** (3GPP: **68.6%**, non-3GPP: 75.7%) |
+| TeleQnA (ot-lite, 1000Q mixed-source) | Nano + naive RAG (always-on) | accuracy | 68.8% (3GPP: **64.9%**, other-source bucket (n=749): 70.4% — context distraction) |
+| TeleQnA (ot-lite, 1000Q mixed-source) | Nano + **selective RAG** (τ=0.15, fires 16%) | accuracy | **73.8%** (3GPP: **68.6%**, other-source bucket: 75.7%) |
 | TeleQnA (leaderboard, reference) | OTel-2.0-31B closed-book (trained in-ecosystem*) | accuracy | 91.7% |
 
 The selective-RAG threshold is the abstain rail's soft floor, **calibrated a

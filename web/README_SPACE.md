@@ -21,7 +21,7 @@ tags:
 # ClauseFinder
 
 Clause-cited 3GPP answers and release diffs on the NVIDIA agentic stack
-(Nemotron-3 Nano/Super via the NVIDIA API, OTel-Embedding-568M, LanceDB
+(Nemotron-3 Nano/Super via OpenRouter, OTel-Embedding-568M, LanceDB
 hybrid retrieval with weighted RRF).
 
 ## Modes

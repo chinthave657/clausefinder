@@ -97,8 +97,13 @@ def _chat(client, model: str, messages: list[dict], max_tokens: int = 900) -> st
             resp = client.chat.completions.create(
                 model=mdl, messages=messages,
                 temperature=0.0, max_tokens=max_tokens, extra_body=extra)
-        except Exception:  # pinned providers busy (no-fallback 404/503) — next rung
-            continue
+        except Exception as e:
+            # invalid BYO key: every rung would 401 — surface the real cause
+            if getattr(e, "status_code", None) == 401:
+                return ("Your OpenRouter API key was rejected (401). Check the "
+                        "key in Settings — or clear it to use the demo's "
+                        "built-in quota.")
+            continue  # pinned providers busy (no-fallback 404/503) — next rung
         text = _content(resp)
         if not _degenerate(text):
             return text
