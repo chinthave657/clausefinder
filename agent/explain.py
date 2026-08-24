@@ -61,7 +61,8 @@ def fetch_clause(retriever: Retriever, spec: str, clause: str,
 
 def explain(ref: str, retriever: Retriever,
             release: str | None = None,
-            instruction: str | None = None) -> tuple[str, ValidatorReport, dict[str, dict]]:
+            instruction: str | None = None,
+            api_key: str | None = None) -> tuple[str, ValidatorReport, dict[str, dict]]:
     """Same return shape as answer.ask(): (text, report, tagmap).
     instruction: optional follow-up directive applied to the clause text
     (e.g. "summarize this in 2 lines" after a previous explain)."""
@@ -98,7 +99,7 @@ def explain(ref: str, retriever: Retriever,
             f"{task} — "
             "with inline [Ck] citations and verbatim quotes per the rules.")
 
-    client, model = _client()
+    client, model = _client(api_key)
     text = _chat(client, model,
                  [{"role": "system", "content": SYSTEM},
                   {"role": "user", "content": user}])

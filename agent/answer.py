@@ -59,6 +59,11 @@ OR_HEADERS = {"HTTP-Referer": "https://github.com/chinthave657/clausefinder",
 _THINK_RE = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
 
 
+class AuthError(RuntimeError):
+    """API key rejected (401) — raised, never returned as answer text, so it
+    can't flow through validation/repair/history as if it were a model reply."""
+
+
 def _content(resp) -> str:
     """Message content with any reasoning block stripped defensively."""
     return _THINK_RE.sub("", resp.choices[0].message.content or "").strip()
@@ -98,11 +103,14 @@ def _chat(client, model: str, messages: list[dict], max_tokens: int = 900) -> st
                 model=mdl, messages=messages,
                 temperature=0.0, max_tokens=max_tokens, extra_body=extra)
         except Exception as e:
-            # invalid BYO key: every rung would 401 — surface the real cause
+            # invalid key: every rung would 401 — raise typed, endpoint-aware
             if getattr(e, "status_code", None) == 401:
-                return ("Your OpenRouter API key was rejected (401). Check the "
-                        "key in Settings — or clear it to use the demo's "
-                        "built-in quota.")
+                raise AuthError(
+                    "Your OpenRouter API key was rejected (401). Check the key "
+                    "in Settings — or clear it to use the demo's built-in "
+                    "quota." if onrouter else
+                    "The NVIDIA API key was rejected (401) — check "
+                    "NVIDIA_API_KEY in your environment.") from e
             continue  # pinned providers busy (no-fallback 404/503) — next rung
         text = _content(resp)
         if not _degenerate(text):

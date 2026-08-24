@@ -66,7 +66,11 @@ Rules:
 - Be concise. No preamble."""
 
 
-def _client() -> tuple[OpenAI, str]:
+def _client(api_key: str | None = None) -> tuple[OpenAI, str]:
+    """api_key: optional per-request BYO OpenRouter key (mirrors answer._client)."""
+    if api_key:
+        return (OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key),
+                os.environ.get("CLAUSEFINDER_DIFF_MODEL", "nvidia/nemotron-3-super-120b-a12b"))
     if os.environ.get("OPENROUTER_API_KEY"):
         return (OpenAI(base_url="https://openrouter.ai/api/v1",
                        api_key=os.environ["OPENROUTER_API_KEY"]),
@@ -82,20 +86,26 @@ def _chat(client, model: str, messages: list[dict], max_tokens: int = 4096) -> s
     """Reasoning ON (the one thinking-on call in the system — design §2):
     no NO_THINK on the first two attempts. Degenerate-output retry mirrors
     answer.py; the last-resort attempt flips thinking off."""
-    # last rung drops the provider pin NO_THINK may carry — the pinned
-    # providers serve the answer models, not necessarily Super-120B
-    last = {k: v for k, v in NO_THINK.items() if k != "provider"} or NO_THINK
-    text = ""
+    # explicit per-endpoint last rung: NO provider pin (the answer-model pin
+    # doesn't necessarily serve Super-120B), reasoning suppressed
+    onrouter = "openrouter" in str(client.base_url)
+    last = {"reasoning": {"exclude": True}} if onrouter else NO_THINK
+    text, last_exc = "", None
     for extra in ({}, {}, last):
         try:
             resp = client.chat.completions.create(
                 model=model, messages=messages,
                 temperature=0.0, max_tokens=max_tokens, extra_body=extra)
-        except Exception:  # provider unavailable for this model — next rung
+        except Exception as e:  # provider unavailable — try next rung
+            if getattr(e, "status_code", None) == 401:
+                raise  # key problem: not retryable, surface to the handler
+            last_exc = e
             continue
         text = _content(resp)
         if not _degenerate(text):
             return text
+    if not text and last_exc is not None:
+        raise last_exc  # all rungs failed: propagate (run_diff shows Error)
     return text
 
 
@@ -111,8 +121,9 @@ def _context_block(sides: dict[str, list[ClauseSide]]) -> tuple[str, dict[str, d
     return "\n\n---\n\n".join(parts), tagmap
 
 
-def diff_releases(question: str, retriever: Retriever, release_a: str, release_b: str,
-                  acronyms: dict | None = None, sides: dict | None = None
+def diff_releases(question: str, retriever: Retriever, release_a: str, release_b: str,  # noqa: PLR0913
+                  acronyms: dict | None = None, sides: dict | None = None,
+                  api_key: str | None = None
                   ) -> tuple[str, ValidatorReport, dict[str, dict], str]:
     """Full diff pipeline. Returns (answer, validator report, tagmap,
     rendered deterministic diff). sides: optionally precomputed clause sets —
@@ -136,6 +147,7 @@ def diff_releases(question: str, retriever: Retriever, release_a: str, release_b
                 ValidatorReport(checks=[], passed=True), {}, rendered)
 
     context, tagmap = _context_block(sides)
+    _key = api_key
     user = (f"Question: {question}\n"
             f"Compare {release_a} (old) vs {release_b} (new).\n\n"
             f"Clause excerpts (both releases):\n{context}\n\n"
@@ -144,7 +156,7 @@ def diff_releases(question: str, retriever: Retriever, release_a: str, release_b
             "Summarize the release differences relevant to the question, with inline "
             "[Ck] citations on both sides and verbatim quotes per the rules.")
 
-    client, model = _client()
+    client, model = _client(_key)
     answer = _chat(client, model,
                    [{"role": "system", "content": SYSTEM},
                     {"role": "user", "content": user}])
@@ -168,4 +180,9 @@ def diff_releases(question: str, retriever: Retriever, release_a: str, release_b
     if not report.passed:
         answer = strip_failed_quotes(answer, tagmap)
         report = validate(answer, tagmap)
+    if _degenerate(answer):
+        answer = ("The synthesis model failed to produce a diff summary just "
+                  "now (a serving issue — the deterministic diff above is "
+                  "still valid). Please try again.")
+        report = ValidatorReport(checks=[], passed=False)
     return answer, report, tagmap, rendered

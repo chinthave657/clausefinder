@@ -9,7 +9,6 @@ Run locally:  uv run python web/app.py
 """
 from __future__ import annotations
 
-import contextlib
 import datetime as dt
 import html
 import os
@@ -33,6 +32,7 @@ except ImportError:
     def GPU(fn=None, **_kw):
         return fn if fn is not None else (lambda f: f)
 
+from agent.answer import AuthError
 from web.theme import CSS, theme
 
 DB = ROOT / "data" / "index"
@@ -46,8 +46,9 @@ def _bootstrap_index() -> None:
     API (the hub library preinstalled in Space images returns EMPTY legacy
     'siblings' for repos >1k files, so snapshot_download sees nothing) and
     downloads each explicitly via hf_hub_download."""
-    if DB.exists() or not os.environ.get("HF_TOKEN"):
-        return
+    marker = DB / ".bootstrap_complete"
+    if marker.exists() or not os.environ.get("HF_TOKEN"):
+        return  # partial DB dir without marker re-runs; hf resumes existing files
     from concurrent.futures import ThreadPoolExecutor
 
     import requests
@@ -80,6 +81,7 @@ def _bootstrap_index() -> None:
     n = sum(1 for f in DB.rglob("*") if f.is_file()) if DB.exists() else 0
     sz = (sum(f.stat().st_size for f in DB.rglob("*") if f.is_file())
           if DB.exists() else 0)
+    marker.write_text("ok")
     print(f"index bootstrap done: {n} files, {sz / 1e9:.2f} GB", flush=True)
 
 
@@ -164,34 +166,6 @@ def _consume_quota(request: "gr.Request | None", bypass: bool) -> bool:
 
 
 # ------------------------------------------------------------------ BYO key
-
-_ENV_LOCK = threading.Lock()
-
-
-@contextlib.contextmanager
-def _borrowed_key(api_key: str | None):
-    """explain()/diff_releases() read OPENROUTER_API_KEY from the environment
-    rather than taking a per-call key; borrow the env var for the duration
-    of the call instead. Serializes
-    concurrent BYO-key requests, which is fine at the demo's queue
-    concurrency (2-3)."""
-    if not api_key:
-        yield
-        return
-    with _ENV_LOCK:
-        prev = os.environ.get("OPENROUTER_API_KEY")
-        prev_nv = os.environ.pop("NVIDIA_API_KEY", None)  # BYO key must win
-        os.environ["OPENROUTER_API_KEY"] = api_key
-        try:
-            yield
-        finally:
-            if prev is None:
-                os.environ.pop("OPENROUTER_API_KEY", None)
-            else:
-                os.environ["OPENROUTER_API_KEY"] = prev
-            if prev_nv is not None:
-                os.environ["NVIDIA_API_KEY"] = prev_nv
-
 
 def _releases() -> list[str]:
     try:
@@ -391,6 +365,9 @@ def run_ask(question: str, release_choice: str, history: list[dict],
     except IndexNotReady:
         yield history[:-1] + [{"role": "assistant", "content": INDEX_BANNER}], "", ""
         return
+    except AuthError as e:
+        yield history[:-1] + [{"role": "assistant", "content": str(e)}], "", ""
+        return
     except Exception as e:  # surface, never crash the queue
         yield (history[:-1] + [{"role": "assistant", "content": f"Error: {e}"}],
                "", "")
@@ -425,8 +402,8 @@ def run_explain(ref: str, release_choice: str, history: list[dict],
             instruction, ref = ref, prev
     else:
         with _LAST_EXPLAINED_LOCK:
-            if len(_LAST_EXPLAINED) > 10000:   # unbounded-growth cap
-                _LAST_EXPLAINED.clear()
+            while len(_LAST_EXPLAINED) > 10000:  # bounded: evict oldest only
+                _LAST_EXPLAINED.pop(next(iter(_LAST_EXPLAINED)), None)
             _LAST_EXPLAINED[sid] = ref
     label = f"{instruction} ({ref})" if instruction else f"Explain {ref}"
     history = (history or []) + [{"role": "user", "content": label}]
@@ -438,12 +415,15 @@ def run_explain(ref: str, release_choice: str, history: list[dict],
     yield history, "", ""
     try:
         from agent.explain import explain
-        with _borrowed_key(api_key):
-            text, report, tagmap = explain(ref, _retriever(),
-                                           release=_rel(release_choice),
-                                           instruction=instruction)
+        text, report, tagmap = explain(ref, _retriever(),
+                                       release=_rel(release_choice),
+                                       instruction=instruction,
+                                       api_key=api_key or None)
     except IndexNotReady:
         yield history[:-1] + [{"role": "assistant", "content": INDEX_BANNER}], "", ""
+        return
+    except AuthError as e:
+        yield history[:-1] + [{"role": "assistant", "content": str(e)}], "", ""
         return
     except Exception as e:
         yield (history[:-1] + [{"role": "assistant", "content": f"Error: {e}"}],
@@ -484,12 +464,16 @@ def run_diff(question: str, rel_a: str, rel_b: str, history: list[dict],
             sides = _cpu_fallback(
                 lambda: resolve_clause_sets(question, (rel_a, rel_b),
                                             _retriever(), _ACRONYMS))
-        with _borrowed_key(api_key):                        # synthesis: network-bound, no GPU
-            result = diff_mod.diff_releases(question, _retriever(), rel_a, rel_b,
-                                            acronyms=_ACRONYMS, sides=sides)
+        # synthesis: network-bound, no GPU; BYO key threads straight through
+        result = diff_mod.diff_releases(question, _retriever(), rel_a, rel_b,
+                                        acronyms=_ACRONYMS, sides=sides,
+                                        api_key=api_key or None)
         text, report, tagmap = result[0], result[1], result[2]
     except IndexNotReady:
         yield history[:-1] + [{"role": "assistant", "content": INDEX_BANNER}], "", ""
+        return
+    except AuthError as e:
+        yield history[:-1] + [{"role": "assistant", "content": str(e)}], "", ""
         return
     except Exception as e:
         yield (history[:-1] + [{"role": "assistant", "content": f"Error: {e}"}],

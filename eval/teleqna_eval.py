@@ -84,18 +84,22 @@ def _load_rows(limit: int | None) -> list[dict]:
     p = hf_hub_download("GSMA/ot-lite", "test_teleqna.json",
                         repo_type="dataset", token=os.environ.get("HF_TOKEN"))
     rows = json.load(open(p))
-    return rows[:limit] if limit else rows
+    return rows[:limit] if limit is not None else rows
 
 
 def _resume_set(out: Path) -> set[int]:
     """Crash-tolerant: a truncated final line must not kill the resume."""
     done: set[int] = set()
+    skipped = 0
     if out.exists():
         for l in out.open():
             try:
                 done.add(json.loads(l)["i"])
-            except Exception:
-                pass
+            except (json.JSONDecodeError, KeyError, TypeError):
+                skipped += 1
+    if skipped > 1:  # 1 = expected truncated tail after a crash; more = corrupt
+        print(f"WARNING: {skipped} unparseable lines in {out} — "
+              f"file may be corrupt; resume set has {len(done)} rows")
     return done
 
 
@@ -156,7 +160,8 @@ def run_scores(limit: int | None, out_dir: Path) -> None:
     Feeds the selective mode; requires CLAUSEFINDER_RERANK=1."""
     from agent.tools.retrieval import Retriever, enhance_query, load_acronyms
     rows = _load_rows(limit)
-    r = Retriever(Path("data/index"))
+    r = Retriever(Path("data/index"), rerank=True)  # scores REQUIRE the
+    # cross-encoder; env-dependent rerank silently wrote all-zero scores
     acr = load_acronyms(Path("data/parsed"))
     out = out_dir / "teleqna_scores.jsonl"
     done = _resume_set(out)
@@ -168,7 +173,8 @@ def run_scores(limit: int | None, out_dir: Path) -> None:
             top = max((h.rerank_score for h in hits
                        if h.rerank_score is not None), default=0.0)
             f.write(json.dumps({"i": i, "top_score": round(float(top), 4)}) + "\n")
-            f.flush()
+            if (i + 1) % 100 == 0:
+                f.flush()
             if (i + 1) % 100 == 0:
                 print(f"scores: {i+1}/{len(rows)}", flush=True)
     print("scores complete")
@@ -178,10 +184,16 @@ def run_selective(tau: float, out_dir: Path) -> None:
     """Post-hoc combine: pick the rag prediction where top_score >= tau, else
     the closed prediction. Needs closed + rag + scores JSONLs (no LLM calls).
     tau defaults to the abstain rail's a-priori soft floor (answer.ABSTAIN_SOFT)."""
-    closed = {json.loads(l)["i"]: json.loads(l) for l in (out_dir / "teleqna_closed.jsonl").open()}
-    rag = {json.loads(l)["i"]: json.loads(l) for l in (out_dir / "teleqna_rag.jsonl").open()}
-    scores = {json.loads(l)["i"]: json.loads(l)["top_score"] for l in (out_dir / "teleqna_scores.jsonl").open()}
+    def _by_id(name: str) -> dict:
+        return {r["i"]: r for r in
+                (json.loads(l) for l in (out_dir / name).open() if l.strip())}
+    closed = _by_id("teleqna_closed.jsonl")
+    rag = _by_id("teleqna_rag.jsonl")
+    scores = {i: r["top_score"] for i, r in _by_id("teleqna_scores.jsonl").items()}
     ids = sorted(set(closed) & set(rag) & set(scores))
+    if not ids:
+        raise SystemExit("no overlapping rows across closed/rag/scores — "
+                         "run the other three modes first")
     by, correct, fired = {}, 0, 0
     for i in ids:
         pick = rag[i] if scores[i] >= tau else closed[i]
