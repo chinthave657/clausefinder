@@ -90,8 +90,10 @@ make demo                       # Gradio locally (uv run python web/app.py)
 
 ## Try it live
 
-`[hosted demo — coming soon]` — HF ZeroGPU Space with the full 5-series corpus.
-Until then, run it yourself with the Docker quickstart above.
+**[huggingface.co/spaces/chinthave/clausefinder](https://huggingface.co/spaces/chinthave/clausefinder)** —
+free hosted demo (HF ZeroGPU) over the full 5-series corpus: Ask, Diff, and
+Explain, 10 queries/day per session, or connect your own OpenRouter key for
+unlimited use. Prefer your own hardware? Docker quickstart above.
 
 ## Benchmarks
 
