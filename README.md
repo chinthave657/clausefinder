@@ -1,5 +1,7 @@
 # ClauseFinder
 
+![ClauseFinder demo — T304 expiry question answered with validated clause citations](docs/assets/demo.gif)
+
 Clause-cited answers to 3GPP standards questions, plus release-to-release
 clause diffs (Rel-17 vs 18 vs 19) — grounded in the official GSMA/3GPP
 markdown corpus, retrieved with a hybrid BM25+vector funnel, and validated
